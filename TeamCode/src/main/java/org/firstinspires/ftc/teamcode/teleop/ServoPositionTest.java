@@ -12,12 +12,14 @@ import java.util.Locale;
 /**
  * Finds safe servo positions for the flowerWedge and turret. No servo moves until A is pressed.
  *
- * Gamepad1: d-pad left/right selects target, A enables it at 0.5, X disables (relaxes) it,
+ * Gamepad1: d-pad left/right selects target, A enables it (wedge at FLOWER_WEDGE_UP, turret at
+ * 0.5), X disables (relaxes) it,
  * d-pad up/down nudges +/-0.01, right/left bumper nudges +/-0.001.
  */
 @TeleOp(name = "Servo Position Test", group = "Test")
 public class ServoPositionTest extends LinearOpMode {
     private static final double START_POSITION = Constants.SERVO_TEST_START_POSITION;
+    private static final double WEDGE_START_POSITION = Constants.FLOWER_WEDGE_UP;
     private static final double COARSE_STEP = 0.01;
     private static final double FINE_STEP = 0.001;
     private static final double TURRET_DEG_PER_SERVO_UNIT = Constants.TURRET_DEG_PER_SERVO_UNIT;
@@ -49,7 +51,9 @@ public class ServoPositionTest extends LinearOpMode {
         turret.setDirection(Servo.Direction.FORWARD);
 
         telemetry.addLine("No servo moves until you press A.");
-        telemetry.addLine("Before enabling, make sure the mechanism can safely reach 0.5.");
+        telemetry.addLine(String.format(Locale.US,
+                "Before enabling, make sure the wedge can reach %.2f and the turret %.2f.",
+                WEDGE_START_POSITION, START_POSITION));
         telemetry.update();
 
         waitForStart();
@@ -106,11 +110,11 @@ public class ServoPositionTest extends LinearOpMode {
     private void enable(int target) {
         if (target == PAIR) {
             // Start both sides from the same position so they don't fight.
-            double start = !Double.isNaN(positions[LEFT]) ? positions[LEFT] : START_POSITION;
+            double start = !Double.isNaN(positions[LEFT]) ? positions[LEFT] : WEDGE_START_POSITION;
             set(LEFT, start);
             set(RIGHT, start);
         } else if (Double.isNaN(positions[target])) {
-            set(target, START_POSITION);
+            set(target, target == TURRET ? START_POSITION : WEDGE_START_POSITION);
         }
     }
 

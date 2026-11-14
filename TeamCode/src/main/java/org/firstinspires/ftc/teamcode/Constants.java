@@ -39,6 +39,9 @@ public final class Constants {
             TURRET_SERVO_RANGE_DEG * TURRET_OVERDRIVE_RATIO / TURRET_REDUCTION_RATIO;
 
     // ---- Servo positions ----
-    /** Position the servo test enables servos at; turret/wedge positions TBD from that test. */
+    /** Position the servo tests start the turret at; turret positions TBD from those tests. */
     public static final double SERVO_TEST_START_POSITION = 0.5;
+    /** Flower wedge positions found with ServoTest (right servo is reversed in code). */
+    public static final double FLOWER_WEDGE_UP = 0.90;
+    public static final double FLOWER_WEDGE_DOWN = 0.20;
 }
