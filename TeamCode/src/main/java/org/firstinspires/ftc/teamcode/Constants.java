@@ -28,7 +28,16 @@ public final class Constants {
     public static final double FLYWHEEL_TICKS_PER_REV = 28.0;
     public static final double FLYWHEEL_DEFAULT_RPM = 2700.0;
     public static final double FLYWHEEL_MAX_RPM = 6000.0;
-    public static final double FLYWHEEL_RPM_STEP = 50.0;
+    public static final double FLYWHEEL_RPM_STEP = 100.0;
+
+    // ---- Indexer (values from the original TestMode) ----
+    public static final double INDEXER_TICKS_PER_REV = 103.6;
+    public static final double INDEXER_MAX_RPM = 1620.0;
+    public static final double INDEXER_DEFAULT_SPEED_PERCENT = 50.0;
+    public static final double INDEXER_SPEED_STEP_PERCENT = 5.0;
+
+    // ---- Driver controls ----
+    public static final double TRIGGER_DEADBAND = 0.05;
 
     // ---- Turret: Axon MAX (programmed 355 deg) -> 1:3.2 overdrive kit -> 2.75:1 turret ----
     public static final double TURRET_SERVO_RANGE_DEG = 355.0;
@@ -44,4 +53,6 @@ public final class Constants {
     /** Flower wedge positions found with ServoTest (right servo is reversed in code). */
     public static final double FLOWER_WEDGE_UP = 0.90;
     public static final double FLOWER_WEDGE_DOWN = 0.20;
+    /** Turret position Main 2026 holds until turret control is added. */
+    public static final double TURRET_HOLD_POSITION = 0.5;
 }

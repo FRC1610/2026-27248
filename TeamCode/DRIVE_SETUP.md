@@ -1,6 +1,6 @@
-# Mecanum Drive TeleOp
+# Main 2026 TeleOp
 
-Select **Mecanum Drive** on the Driver Station. Gamepad 1's left stick controls
+Select **Main 2026** on the Driver Station. Gamepad 1's left stick controls
 field-centric translation; right stick X controls rotation. Click the left stick
 to toggle between full and half speed.
 

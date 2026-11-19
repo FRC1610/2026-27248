@@ -13,7 +13,7 @@ import org.firstinspires.ftc.robotcore.external.navigation.Pose3D;
 import org.firstinspires.ftc.teamcode.Constants;
 import org.firstinspires.ftc.teamcode.RobotHardware;
 
-@TeleOp(name = "Mecanum Drive", group = "TeleOp")
+@TeleOp(name = "Main 2026", group = "TeleOp")
 public class DriveTeleOp extends LinearOpMode {
     private final RobotHardware robot = new RobotHardware();
 
@@ -21,11 +21,17 @@ public class DriveTeleOp extends LinearOpMode {
     public void runOpMode() {
         try {
             robot.init(hardwareMap);
+            // Flower wedge starts UP, as in the test OpModes (moves when INIT is pressed).
+            boolean wedgeUp = true;
+            robot.setFlowerWedgePosition(Constants.FLOWER_WEDGE_UP);
+            // Turret is held at a fixed position for now (moves when INIT is pressed).
+            robot.setTurretPosition(Constants.TURRET_HOLD_POSITION);
             telemetry.addLine("Keep robot stationary while Pinpoint calibrates.");
             telemetry.addLine("Left stick: move; right stick X: turn; left stick click: half speed.");
-            telemetry.addLine("Start sideways as last year; allianceButton selects red/blue heading.");
-            telemetry.addLine("GP1: A flywheel on/off, dpad up/down RPM +/-50, LT/RT indexer fwd/rev.");
-            telemetry.addLine("GP2: RT intake, LT reverse intake.");
+            telemetry.addLine("Field-centric 'forward' = the direction the robot faces at INIT.");
+            telemetry.addLine("GP1: A flywheel on/off, dpad up/down RPM +/-100.");
+            telemetry.addLine("GP1: B indexer on/off, dpad right/left indexer +/-5%.");
+            telemetry.addLine("GP1: RT intake, LT reverse intake; Y wedge up/down.");
             telemetry.addData("Limelight requested pipeline", robot.getSelectedVisionPipeline());
             telemetry.update();
 
@@ -39,12 +45,17 @@ public class DriveTeleOp extends LinearOpMode {
             boolean dpadDownPreviouslyPressed = false;
             boolean flywheelOn = false;
             double flywheelSetpointRpm = Constants.FLYWHEEL_DEFAULT_RPM;
+            boolean bPreviouslyPressed = false;
+            boolean yPreviouslyPressed = false;
+            boolean dpadRightPreviouslyPressed = false;
+            boolean dpadLeftPreviouslyPressed = false;
+            boolean indexerOn = false;
+            double indexerSpeedPercent = Constants.INDEXER_DEFAULT_SPEED_PERCENT;
             while (opModeIsActive()) {
                 robot.selectAllianceLimelightPipeline();
                 robot.refreshLimelightResult();
                 robot.pinpoint.update();
                 Pose2D pose = robot.pinpoint.getPosition();
-                double headingOffset = robot.getHeadingOffsetRadians();
 
                 if (gamepad1.left_stick_button && !leftStickPreviouslyPressed) {
                     speed = speed == Constants.DRIVE_FULL_SPEED
@@ -52,7 +63,9 @@ public class DriveTeleOp extends LinearOpMode {
                 }
                 leftStickPreviouslyPressed = gamepad1.left_stick_button;
 
-                double heading = pose.getHeading(AngleUnit.RADIANS) + headingOffset;
+                // Alliance heading offset (+/-90 deg) removed for now; RobotHardware still provides
+                // getHeadingOffsetRadians() if it's needed again.
+                double heading = pose.getHeading(AngleUnit.RADIANS);
                 if (robot.pinpoint.getDeviceStatus() == GoBildaPinpointDriver.DeviceStatus.READY
                         && !Double.isNaN(heading) && !Double.isInfinite(heading)) {
                     robot.fieldCentricDrive(gamepad1.left_stick_x, -gamepad1.left_stick_y,
@@ -62,15 +75,36 @@ public class DriveTeleOp extends LinearOpMode {
                     telemetry.addLine("Drive stopped: Pinpoint must be ready with a valid heading.");
                 }
 
-                // Intake (gamepad2): right trigger forward, left trigger reverse.
-                double intakePower = gamepad2.right_trigger - gamepad2.left_trigger;
+                // Intake (gamepad1): right trigger forward, left trigger reverse.
+                double intakePower = gamepad1.right_trigger - gamepad1.left_trigger;
+                if (Math.abs(intakePower) < Constants.TRIGGER_DEADBAND) intakePower = 0;
                 robot.setIntakePower(intakePower);
 
-                // Indexer (gamepad1): left trigger forward, right trigger reverse.
-                double indexerPower = gamepad1.left_trigger - gamepad1.right_trigger;
-                robot.setIndexerPower(indexerPower);
+                // Indexer (gamepad1): B toggles, d-pad right/left adjusts speed by 5%.
+                if (gamepad1.b && !bPreviouslyPressed) indexerOn = !indexerOn;
+                bPreviouslyPressed = gamepad1.b;
+                if (gamepad1.dpad_right && !dpadRightPreviouslyPressed) {
+                    indexerSpeedPercent = Math.min(100,
+                            indexerSpeedPercent + Constants.INDEXER_SPEED_STEP_PERCENT);
+                }
+                dpadRightPreviouslyPressed = gamepad1.dpad_right;
+                if (gamepad1.dpad_left && !dpadLeftPreviouslyPressed) {
+                    indexerSpeedPercent = Math.max(0,
+                            indexerSpeedPercent - Constants.INDEXER_SPEED_STEP_PERCENT);
+                }
+                dpadLeftPreviouslyPressed = gamepad1.dpad_left;
+                double indexerTargetRpm = Constants.INDEXER_MAX_RPM * indexerSpeedPercent / 100.0;
+                robot.setIndexerRpm(indexerOn ? indexerTargetRpm : 0);
 
-                // Flywheel (gamepad1): A toggles, d-pad up/down adjusts setpoint by 50 RPM.
+                // Flower wedge (gamepad1): Y toggles between the up and down presets.
+                if (gamepad1.y && !yPreviouslyPressed) {
+                    wedgeUp = !wedgeUp;
+                    robot.setFlowerWedgePosition(
+                            wedgeUp ? Constants.FLOWER_WEDGE_UP : Constants.FLOWER_WEDGE_DOWN);
+                }
+                yPreviouslyPressed = gamepad1.y;
+
+                // Flywheel (gamepad1): A toggles, d-pad up/down adjusts setpoint by 100 RPM.
                 if (gamepad1.a && !aPreviouslyPressed) flywheelOn = !flywheelOn;
                 aPreviouslyPressed = gamepad1.a;
                 if (gamepad1.dpad_up && !dpadUpPreviouslyPressed) {
@@ -99,15 +133,18 @@ public class DriveTeleOp extends LinearOpMode {
                 telemetry.addData("Intake power", "%.2f", intakePower);
                 telemetry.addData("Intake L/R velocity (ticks/s)", "%.0f / %.0f",
                         robot.getIntakeLeftVelocity(), robot.getIntakeRightVelocity());
-                telemetry.addData("Indexer power", "%.2f", indexerPower);
-                telemetry.addData("Indexer velocity (ticks/s)", "%.0f", robot.getIndexerVelocity());
+                telemetry.addData("Indexer", "%s, %.0f%% (target %.0f RPM)",
+                        indexerOn ? "ON" : "OFF", indexerSpeedPercent, indexerTargetRpm);
+                telemetry.addData("Indexer current (RPM)", "%.0f", robot.getIndexerRpm());
+                telemetry.addData("Flower wedge", "%s (%.2f)", wedgeUp ? "UP" : "DOWN",
+                        robot.getFlowerWedgePosition());
                 telemetry.addData("Alliance", robot.isRedAlliance() ? "RED" : "BLUE");
                 telemetry.addData("Drive speed", speed);
                 telemetry.addData("Pinpoint status", robot.pinpoint.getDeviceStatus());
                 telemetry.addData("X (in)", "%.3f", pose.getX(DistanceUnit.INCH));
                 telemetry.addData("Y (in)", "%.3f", pose.getY(DistanceUnit.INCH));
                 telemetry.addData("Heading (deg)", "%.1f", pose.getHeading(AngleUnit.DEGREES));
-                telemetry.addData("Heading offset (deg)", "%.1f", Math.toDegrees(headingOffset));
+                telemetry.addData("Turret", "%.2f (held)", robot.getTurretPosition());
                 addVisionTelemetry();
                 telemetry.update();
                 idle();

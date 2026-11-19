@@ -152,6 +152,20 @@ public class RobotHardware {
         indexer.setPower(clip(power, -1, 1));
     }
 
+    /** Closed-loop indexer speed in RPM, clipped to [0, INDEXER_MAX_RPM]. */
+    public void setIndexerRpm(double rpm) {
+        double target = clip(rpm, 0, Constants.INDEXER_MAX_RPM);
+        if (target == 0) {
+            indexer.setPower(0);
+        } else {
+            indexer.setVelocity(target * Constants.INDEXER_TICKS_PER_REV / 60.0);
+        }
+    }
+
+    public double getIndexerRpm() {
+        return indexer.getVelocity() * 60.0 / Constants.INDEXER_TICKS_PER_REV;
+    }
+
     /** Closed-loop flywheel speed in motor/flywheel RPM, clipped to [0, FLYWHEEL_MAX_RPM]. */
     public void setFlywheelRpm(double rpm) {
         double target = clip(rpm, 0, Constants.FLYWHEEL_MAX_RPM);
