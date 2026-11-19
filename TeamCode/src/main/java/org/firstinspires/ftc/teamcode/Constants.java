@@ -5,7 +5,7 @@ public final class Constants {
     private Constants() {}
 
     // ---- Drive ----
-    public static final double DRIVE_FULL_SPEED = 1.0;
+    public static final double DRIVE_FULL_SPEED = 0.85;
     /** Speed scale used when the left-stick-click slow mode is active. */
     public static final double DRIVE_SLOW_SPEED = 0.5;
     /** Multiplier on strafe input to counter mecanum strafe losses. */
@@ -26,14 +26,14 @@ public final class Constants {
 
     // ---- Flywheel: goBILDA 5203 Yellow Jacket 6000 RPM (1:1), direct drive to the flywheel ----
     public static final double FLYWHEEL_TICKS_PER_REV = 28.0;
-    public static final double FLYWHEEL_DEFAULT_RPM = 2700.0;
+    public static final double FLYWHEEL_DEFAULT_RPM = 2575.0;
     public static final double FLYWHEEL_MAX_RPM = 6000.0;
     public static final double FLYWHEEL_RPM_STEP = 100.0;
 
     // ---- Indexer (values from the original TestMode) ----
     public static final double INDEXER_TICKS_PER_REV = 103.6;
     public static final double INDEXER_MAX_RPM = 1620.0;
-    public static final double INDEXER_DEFAULT_SPEED_PERCENT = 50.0;
+    public static final double INDEXER_DEFAULT_SPEED_PERCENT = 75.0;
     public static final double INDEXER_SPEED_STEP_PERCENT = 5.0;
 
     // ---- Driver controls ----
@@ -52,7 +52,7 @@ public final class Constants {
     public static final double SERVO_TEST_START_POSITION = 0.5;
     /** Flower wedge positions found with ServoTest (right servo is reversed in code). */
     public static final double FLOWER_WEDGE_UP = 0.90;
-    public static final double FLOWER_WEDGE_DOWN = 0.20;
+    public static final double FLOWER_WEDGE_DOWN = 0.22;
     /** Turret position Main 2026 holds until turret control is added. */
     public static final double TURRET_HOLD_POSITION = 0.5;
 }
