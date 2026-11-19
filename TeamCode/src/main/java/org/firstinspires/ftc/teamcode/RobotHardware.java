@@ -12,7 +12,9 @@ import com.qualcomm.robotcore.hardware.PIDFCoefficients;
 import com.qualcomm.robotcore.hardware.Servo;
 import com.qualcomm.robotcore.hardware.ServoImplEx;
 
+import org.firstinspires.ftc.robotcore.external.navigation.AngleUnit;
 import org.firstinspires.ftc.robotcore.external.navigation.DistanceUnit;
+import org.firstinspires.ftc.robotcore.external.navigation.Pose2D;
 
 /** Drive configuration carried over from 2025-27248 RobotHardware and PedroConstants. */
 public class RobotHardware {
@@ -29,11 +31,17 @@ public class RobotHardware {
     private DcMotorEx indexer;
     private DcMotorEx flywheel;
     private PIDFCoefficients flywheelPidf;
+    /** Last flywheel setpoint passed to setFlywheelRpm (0 = off). */
+    private double flywheelTargetRpm = 0;
     private DigitalChannel allianceButton;
     private DigitalChannel indexBeam1;
     private ServoImplEx flowerWedgeLeft;
     private ServoImplEx flowerWedgeRight;
     private ServoImplEx turret;
+
+    // Drive ramp state: last commanded power per wheel (LF, LB, RF, RB) and when it was sent.
+    private final double[] lastDrivePowers = new double[4];
+    private long lastDriveNanos = 0;
 
     public void init(HardwareMap hardwareMap) {
         leftFront = hardwareMap.get(DcMotorEx.class, "leftFront");
@@ -147,14 +155,31 @@ public class RobotHardware {
         intakeRight.setPower(p);
     }
 
-    /** Positive power runs the indexer forward; clipped to [-1, 1]. */
-    public void setIndexerPower(double power) {
-        indexer.setPower(clip(power, -1, 1));
+    /**
+     * True when the indexer may run forward: the flywheel is commanded on and measures at least
+     * INDEXER_MIN_FLYWHEEL_RPM.
+     */
+    public boolean isIndexerForwardAllowed() {
+        return flywheelTargetRpm > 0 && getFlywheelRpm() >= Constants.INDEXER_MIN_FLYWHEEL_RPM;
     }
 
-    /** Closed-loop indexer speed in RPM, clipped to [0, INDEXER_MAX_RPM]. */
+    /**
+     * Positive power runs the indexer forward; clipped to [-1, 1]. Forward power is replaced
+     * with 0 unless isIndexerForwardAllowed(); reverse is always allowed.
+     */
+    public void setIndexerPower(double power) {
+        double p = clip(power, -1, 1);
+        if (p > 0 && !isIndexerForwardAllowed()) p = 0;
+        indexer.setPower(p);
+    }
+
+    /**
+     * Closed-loop indexer speed in RPM (forward), clipped to [0, INDEXER_MAX_RPM]. Stops the
+     * indexer instead unless isIndexerForwardAllowed().
+     */
     public void setIndexerRpm(double rpm) {
         double target = clip(rpm, 0, Constants.INDEXER_MAX_RPM);
+        if (target > 0 && !isIndexerForwardAllowed()) target = 0;
         if (target == 0) {
             indexer.setPower(0);
         } else {
@@ -169,6 +194,7 @@ public class RobotHardware {
     /** Closed-loop flywheel speed in motor/flywheel RPM, clipped to [0, FLYWHEEL_MAX_RPM]. */
     public void setFlywheelRpm(double rpm) {
         double target = clip(rpm, 0, Constants.FLYWHEEL_MAX_RPM);
+        flywheelTargetRpm = target;
         if (target == 0) {
             flywheel.setPower(0);
         } else {
@@ -232,6 +258,17 @@ public class RobotHardware {
         return indexBeam1.getState();
     }
 
+    /**
+     * Makes the robot's current facing the new 0 heading (field-centric "forward") while keeping
+     * the Pinpoint's X/Y. Uses the pose from the last pinpoint.update().
+     */
+    public void resetHeading() {
+        Pose2D pose = pinpoint.getPosition();
+        pinpoint.setPosition(new Pose2D(DistanceUnit.INCH,
+                pose.getX(DistanceUnit.INCH), pose.getY(DistanceUnit.INCH),
+                AngleUnit.RADIANS, 0));
+    }
+
     public double getHeadingOffsetRadians() {
         return isRedAlliance()
                 ? Constants.RED_START_HEADING_OFFSET_RAD : Constants.BLUE_START_HEADING_OFFSET_RAD;
@@ -244,18 +281,49 @@ public class RobotHardware {
         double denominator = Math.max(Math.abs(rotY) + Math.abs(rotX) + Math.abs(turn), 1);
         double scale = Math.max(0, Math.min(speed, 1));
 
-        leftFront.setPower((rotY + rotX + turn) / denominator * scale);
-        leftBack.setPower((rotY - rotX + turn) / denominator * scale);
-        rightFront.setPower((rotY - rotX - turn) / denominator * scale);
-        rightBack.setPower((rotY + rotX - turn) / denominator * scale);
+        double[] targets = {
+                (rotY + rotX + turn) / denominator * scale,
+                (rotY - rotX + turn) / denominator * scale,
+                (rotY - rotX - turn) / denominator * scale,
+                (rotY + rotX - turn) / denominator * scale,
+        };
+
+        // Seconds since the last drive command. Capped so a long pause between calls
+        // can't allow a jump to full power; the first call after a stop allows no increase.
+        long now = System.nanoTime();
+        double dt = lastDriveNanos == 0 ? 0 : Math.min((now - lastDriveNanos) / 1e9, 0.1);
+        lastDriveNanos = now;
+        double maxIncrease = Constants.DRIVE_RAMP_UP_SECONDS > 0
+                ? dt / Constants.DRIVE_RAMP_UP_SECONDS : Double.POSITIVE_INFINITY;
+
+        for (int i = 0; i < targets.length; i++) {
+            lastDrivePowers[i] = rampPower(lastDrivePowers[i], targets[i], maxIncrease);
+        }
+        leftFront.setPower(lastDrivePowers[0]);
+        leftBack.setPower(lastDrivePowers[1]);
+        rightFront.setPower(lastDrivePowers[2]);
+        rightBack.setPower(lastDrivePowers[3]);
     }
 
-    /** Also safe to call if initialization stopped partway through. */
+    /**
+     * Limits how fast a wheel's power magnitude can grow. Reducing power (including stopping)
+     * is immediate; a direction reversal drops to 0 first and then ramps up the other way.
+     */
+    private static double rampPower(double current, double target, double maxIncrease) {
+        if (current != 0 && Math.signum(target) != Math.signum(current)) return 0;
+        if (Math.abs(target) <= Math.abs(current)) return target;
+        double increase = Math.min(Math.abs(target) - Math.abs(current), maxIncrease);
+        return Math.signum(target) * (Math.abs(current) + increase);
+    }
+
+    /** Also safe to call if initialization stopped partway through. Resets the drive ramp. */
     public void stopDrive() {
         if (leftFront != null) leftFront.setPower(0);
         if (rightFront != null) rightFront.setPower(0);
         if (leftBack != null) leftBack.setPower(0);
         if (rightBack != null) rightBack.setPower(0);
+        java.util.Arrays.fill(lastDrivePowers, 0);
+        lastDriveNanos = 0;
     }
 
     /**

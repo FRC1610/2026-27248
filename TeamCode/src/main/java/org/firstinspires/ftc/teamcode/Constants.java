@@ -10,6 +10,11 @@ public final class Constants {
     public static final double DRIVE_SLOW_SPEED = 0.5;
     /** Multiplier on strafe input to counter mecanum strafe losses. */
     public static final double STRAFE_CORRECTION = 1.1;
+    /**
+     * Seconds for a drive wheel's power to ramp from 0 to full (1.0), to limit current spikes
+     * and brownouts. Slowing down/stopping is not ramped. Starting value; tune on the robot.
+     */
+    public static final double DRIVE_RAMP_UP_SECONDS = 0.4;
 
     // ---- Starting heading (last year's sideways start: blue faces right, red faces left) ----
     public static final double BLUE_START_HEADING_OFFSET_RAD = Math.PI / 2.0;
@@ -35,6 +40,11 @@ public final class Constants {
     public static final double INDEXER_MAX_RPM = 1620.0;
     public static final double INDEXER_DEFAULT_SPEED_PERCENT = 75.0;
     public static final double INDEXER_SPEED_STEP_PERCENT = 5.0;
+    /**
+     * The indexer may only run forward while the flywheel is commanded on and measures at least
+     * this speed. Reverse is always allowed.
+     */
+    public static final double INDEXER_MIN_FLYWHEEL_RPM = 2000.0;
 
     // ---- Driver controls ----
     public static final double TRIGGER_DEADBAND = 0.05;

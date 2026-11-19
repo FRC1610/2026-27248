@@ -29,9 +29,11 @@ public class DriveTeleOp extends LinearOpMode {
             telemetry.addLine("Keep robot stationary while Pinpoint calibrates.");
             telemetry.addLine("Left stick: move; right stick X: turn; left stick click: half speed.");
             telemetry.addLine("Field-centric 'forward' = the direction the robot faces at INIT.");
-            telemetry.addLine("GP1: A flywheel on/off, dpad up/down RPM +/-100.");
-            telemetry.addLine("GP1: B indexer on/off, dpad right/left indexer +/-5%.");
-            telemetry.addLine("GP1: RT intake, LT reverse intake; Y wedge up/down.");
+            telemetry.addLine("GP1 (driver): Back/Share resets heading to current facing.");
+            telemetry.addLine("GP2: A flywheel on/off, dpad up/down RPM +/-100.");
+            telemetry.addLine("GP2: B indexer on/off, dpad right/left indexer +/-5%.");
+            telemetry.addLine("GP2: RT intake, LT reverse intake; Y wedge up/down.");
+            telemetry.addLine("GP2: hold RB/LB = EMERGENCY intake+indexer full fwd/rev.");
             telemetry.addData("Limelight requested pipeline", robot.getSelectedVisionPipeline());
             telemetry.update();
 
@@ -39,6 +41,7 @@ public class DriveTeleOp extends LinearOpMode {
             if (isStopRequested()) return;
 
             boolean leftStickPreviouslyPressed = false;
+            boolean backPreviouslyPressed = false;
             double speed = Constants.DRIVE_FULL_SPEED;
             boolean aPreviouslyPressed = false;
             boolean dpadUpPreviouslyPressed = false;
@@ -63,6 +66,15 @@ public class DriveTeleOp extends LinearOpMode {
                 }
                 leftStickPreviouslyPressed = gamepad1.left_stick_button;
 
+                // Heading reset (gamepad1): Back/Share makes the current facing field-centric
+                // "forward". X/Y are kept. Takes effect from the next Pinpoint update.
+                if (gamepad1.back && !backPreviouslyPressed) {
+                    robot.resetHeading();
+                    pose = new Pose2D(DistanceUnit.INCH, pose.getX(DistanceUnit.INCH),
+                            pose.getY(DistanceUnit.INCH), AngleUnit.RADIANS, 0);
+                }
+                backPreviouslyPressed = gamepad1.back;
+
                 // Alliance heading offset (+/-90 deg) removed for now; RobotHardware still provides
                 // getHeadingOffsetRadians() if it's needed again.
                 double heading = pose.getHeading(AngleUnit.RADIANS);
@@ -75,50 +87,66 @@ public class DriveTeleOp extends LinearOpMode {
                     telemetry.addLine("Drive stopped: Pinpoint must be ready with a valid heading.");
                 }
 
-                // Intake (gamepad1): right trigger forward, left trigger reverse.
-                double intakePower = gamepad1.right_trigger - gamepad1.left_trigger;
+                // Emergency (gamepad2): hold RB = intake + indexer full forward, LB = full
+                // reverse. Holding both cancels out and leaves the normal controls in charge.
+                int emergencyDirection = (gamepad2.right_bumper ? 1 : 0)
+                        - (gamepad2.left_bumper ? 1 : 0);
+                boolean emergency = emergencyDirection != 0;
+
+                // Intake (gamepad2): right trigger forward, left trigger reverse.
+                double intakePower = gamepad2.right_trigger - gamepad2.left_trigger;
                 if (Math.abs(intakePower) < Constants.TRIGGER_DEADBAND) intakePower = 0;
+                if (emergency) intakePower = emergencyDirection;
                 robot.setIntakePower(intakePower);
 
-                // Indexer (gamepad1): B toggles, d-pad right/left adjusts speed by 5%.
-                if (gamepad1.b && !bPreviouslyPressed) indexerOn = !indexerOn;
-                bPreviouslyPressed = gamepad1.b;
-                if (gamepad1.dpad_right && !dpadRightPreviouslyPressed) {
+                // Indexer (gamepad2): B toggles, d-pad right/left adjusts speed by 5%.
+                // Toggle/speed changes still register during an emergency and apply on release.
+                if (gamepad2.b && !bPreviouslyPressed) indexerOn = !indexerOn;
+                bPreviouslyPressed = gamepad2.b;
+                if (gamepad2.dpad_right && !dpadRightPreviouslyPressed) {
                     indexerSpeedPercent = Math.min(100,
                             indexerSpeedPercent + Constants.INDEXER_SPEED_STEP_PERCENT);
                 }
-                dpadRightPreviouslyPressed = gamepad1.dpad_right;
-                if (gamepad1.dpad_left && !dpadLeftPreviouslyPressed) {
+                dpadRightPreviouslyPressed = gamepad2.dpad_right;
+                if (gamepad2.dpad_left && !dpadLeftPreviouslyPressed) {
                     indexerSpeedPercent = Math.max(0,
                             indexerSpeedPercent - Constants.INDEXER_SPEED_STEP_PERCENT);
                 }
-                dpadLeftPreviouslyPressed = gamepad1.dpad_left;
+                dpadLeftPreviouslyPressed = gamepad2.dpad_left;
                 double indexerTargetRpm = Constants.INDEXER_MAX_RPM * indexerSpeedPercent / 100.0;
-                robot.setIndexerRpm(indexerOn ? indexerTargetRpm : 0);
+                if (emergency) {
+                    robot.setIndexerPower(emergencyDirection);
+                } else {
+                    robot.setIndexerRpm(indexerOn ? indexerTargetRpm : 0);
+                }
 
-                // Flower wedge (gamepad1): Y toggles between the up and down presets.
-                if (gamepad1.y && !yPreviouslyPressed) {
+                // Flower wedge (gamepad2): Y toggles between the up and down presets.
+                if (gamepad2.y && !yPreviouslyPressed) {
                     wedgeUp = !wedgeUp;
                     robot.setFlowerWedgePosition(
                             wedgeUp ? Constants.FLOWER_WEDGE_UP : Constants.FLOWER_WEDGE_DOWN);
                 }
-                yPreviouslyPressed = gamepad1.y;
+                yPreviouslyPressed = gamepad2.y;
 
-                // Flywheel (gamepad1): A toggles, d-pad up/down adjusts setpoint by 100 RPM.
-                if (gamepad1.a && !aPreviouslyPressed) flywheelOn = !flywheelOn;
-                aPreviouslyPressed = gamepad1.a;
-                if (gamepad1.dpad_up && !dpadUpPreviouslyPressed) {
+                // Flywheel (gamepad2): A toggles, d-pad up/down adjusts setpoint by 100 RPM.
+                if (gamepad2.a && !aPreviouslyPressed) flywheelOn = !flywheelOn;
+                aPreviouslyPressed = gamepad2.a;
+                if (gamepad2.dpad_up && !dpadUpPreviouslyPressed) {
                     flywheelSetpointRpm += Constants.FLYWHEEL_RPM_STEP;
                 }
-                dpadUpPreviouslyPressed = gamepad1.dpad_up;
-                if (gamepad1.dpad_down && !dpadDownPreviouslyPressed) {
+                dpadUpPreviouslyPressed = gamepad2.dpad_up;
+                if (gamepad2.dpad_down && !dpadDownPreviouslyPressed) {
                     flywheelSetpointRpm -= Constants.FLYWHEEL_RPM_STEP;
                 }
-                dpadDownPreviouslyPressed = gamepad1.dpad_down;
+                dpadDownPreviouslyPressed = gamepad2.dpad_down;
                 flywheelSetpointRpm = Math.max(0,
                         Math.min(Constants.FLYWHEEL_MAX_RPM, flywheelSetpointRpm));
                 robot.setFlywheelRpm(flywheelOn ? flywheelSetpointRpm : 0);
 
+                if (emergency) {
+                    telemetry.addData("EMERGENCY", "intake + indexer full %s",
+                            emergencyDirection > 0 ? "FORWARD" : "REVERSE");
+                }
                 telemetry.addData("Flywheel", flywheelOn ? "ON" : "OFF");
                 telemetry.addData("Flywheel setpoint (RPM)", "%.0f", flywheelSetpointRpm);
                 double flywheelRpm = robot.getFlywheelRpm();
@@ -136,6 +164,10 @@ public class DriveTeleOp extends LinearOpMode {
                 telemetry.addData("Indexer", "%s, %.0f%% (target %.0f RPM)",
                         indexerOn ? "ON" : "OFF", indexerSpeedPercent, indexerTargetRpm);
                 telemetry.addData("Indexer current (RPM)", "%.0f", robot.getIndexerRpm());
+                if (!robot.isIndexerForwardAllowed()) {
+                    telemetry.addData("Indexer forward", "BLOCKED: flywheel off or < %.0f RPM",
+                            Constants.INDEXER_MIN_FLYWHEEL_RPM);
+                }
                 telemetry.addData("Flower wedge", "%s (%.2f)", wedgeUp ? "UP" : "DOWN",
                         robot.getFlowerWedgePosition());
                 telemetry.addData("Alliance", robot.isRedAlliance() ? "RED" : "BLUE");
