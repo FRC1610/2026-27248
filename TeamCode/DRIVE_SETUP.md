@@ -1,8 +1,24 @@
-# Mecanum Drive TeleOp
+# Main 2026 TeleOp
 
-Select **Mecanum Drive** on the Driver Station. Gamepad 1's left stick controls
+Select **Main 2026** on the Driver Station. Gamepad 1 (driver) left stick controls
 field-centric translation; right stick X controls rotation. Click the left stick
-to toggle between full and half speed.
+to toggle between full and half speed. Press **Back/Share** to make the robot's
+current facing the new field-centric forward (X/Y are kept).
+
+Gamepad 2 (operator) runs the mechanisms:
+
+| Control | Action |
+| --- | --- |
+| RT / LT | Intake forward / reverse (proportional) |
+| B | Indexer on/off |
+| D-pad right / left | Indexer speed +/-5% |
+| A | Flywheel on/off |
+| D-pad up / down | Flywheel setpoint +/-100 RPM |
+| Y | Flower wedge up/down |
+| Hold RB / LB | **Emergency**: intake and indexer full forward / reverse |
+
+**Single Gamepad Test** (Test group) keeps the previous layout with every
+control on gamepad 1.
 
 Configure these exact hardware names on the Robot Controller:
 
