@@ -6,6 +6,7 @@ import com.qualcomm.robotcore.hardware.Servo;
 import com.qualcomm.robotcore.hardware.ServoImplEx;
 
 import org.firstinspires.ftc.teamcode.Constants;
+import org.firstinspires.ftc.teamcode.RobotHardware;
 
 import java.util.Locale;
 
@@ -48,7 +49,7 @@ public class ServoPositionTest extends LinearOpMode {
         // position move both sides of the wedge the same way. Verify with the single-servo targets.
         wedgeLeft.setDirection(Servo.Direction.FORWARD);
         wedgeRight.setDirection(Servo.Direction.REVERSE);
-        turret.setDirection(Servo.Direction.FORWARD);
+        RobotHardware.configureTurretServo(turret); // full-range PWM, same as Main 2026
 
         telemetry.addLine("No servo moves until you press A.");
         telemetry.addLine(String.format(Locale.US,

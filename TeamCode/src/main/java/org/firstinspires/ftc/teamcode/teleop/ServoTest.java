@@ -6,6 +6,7 @@ import com.qualcomm.robotcore.hardware.Servo;
 import com.qualcomm.robotcore.hardware.ServoImplEx;
 
 import org.firstinspires.ftc.teamcode.Constants;
+import org.firstinspires.ftc.teamcode.RobotHardware;
 
 /**
  * Finds the flower wedge up and down positions and tests the turret servo.
@@ -40,7 +41,7 @@ public class ServoTest extends LinearOpMode {
         // Directions match RobotHardware and ServoPositionTest.
         flowerWedgeLeft.setDirection(Servo.Direction.FORWARD);
         flowerWedgeRight.setDirection(Servo.Direction.REVERSE);
-        turret.setDirection(Servo.Direction.FORWARD);
+        RobotHardware.configureTurretServo(turret); // full-range PWM, same as Main 2026
 
         try {
             applySetpoints();

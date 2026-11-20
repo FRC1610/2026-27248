@@ -12,10 +12,18 @@ Gamepad 2 (operator) runs the mechanisms:
 | RT / LT | Intake forward / reverse (proportional) |
 | B | Indexer on/off |
 | D-pad right / left | Indexer speed +/-5% |
-| A | Flywheel on/off |
+| A | Flywheel + turret auto-aim on/off (a ball reaching the indexer beam also turns them on) |
 | D-pad up / down | Flywheel setpoint +/-100 RPM |
 | Y | Flower wedge up/down |
 | Hold RB / LB | **Emergency**: intake and indexer full forward / reverse |
+| Right stick X | Manual turret while auto-aim is on |
+
+The turret auto-aims at the selected alliance pipeline's AprilTag target using the
+turret-mounted Limelight (`tx`) plus Pinpoint heading changes (`TurretTracker`). When the
+target passes the end of the turret's travel, the turret swings around to the other end. It
+stays locked at 0.5 until `TURRET_MIN_POSITION` / `TURRET_MAX_POSITION` are measured with
+**Turret Limit Test**. Configure tag grouping or a priority tag ID in the Limelight web
+interface; the code uses the pipeline's `tx`.
 
 **Single Gamepad Test** (Test group) keeps the previous layout with every
 control on gamepad 1.
