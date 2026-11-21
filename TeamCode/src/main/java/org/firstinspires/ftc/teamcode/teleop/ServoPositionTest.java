@@ -14,7 +14,7 @@ import java.util.Locale;
  * Finds safe servo positions for the flowerWedge and turret. No servo moves until A is pressed.
  *
  * Gamepad1: d-pad left/right selects target, A enables it (wedge at FLOWER_WEDGE_UP, turret at
- * 0.5), X disables (relaxes) it,
+ * SERVO_TEST_START_POSITION, facing the rear), X disables (relaxes) it,
  * d-pad up/down nudges +/-0.01, right/left bumper nudges +/-0.001.
  */
 @TeleOp(name = "Servo Position Test", group = "Test")
@@ -95,8 +95,8 @@ public class ServoPositionTest extends LinearOpMode {
                 telemetry.addData("flowerWedgeRight (reversed)", format(positions[RIGHT]));
                 telemetry.addData("turret", format(positions[TURRET]));
                 if (!Double.isNaN(positions[TURRET])) {
-                    telemetry.addData("turret est. deg from 0.5", "%.1f",
-                            (positions[TURRET] - 0.5) * TURRET_DEG_PER_SERVO_UNIT);
+                    telemetry.addData("turret est. deg from start", "%.1f",
+                            (positions[TURRET] - START_POSITION) * TURRET_DEG_PER_SERVO_UNIT);
                 }
                 telemetry.update();
                 idle();

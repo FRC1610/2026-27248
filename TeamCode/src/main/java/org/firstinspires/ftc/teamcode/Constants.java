@@ -16,8 +16,10 @@ public final class Constants {
      */
     public static final double DRIVE_RAMP_UP_SECONDS = 0.4;
 
-    // ---- Starting heading (last year's sideways start: blue faces right, red faces left) ----
-    public static final double BLUE_START_HEADING_OFFSET_RAD = Math.PI / 2.0;
+    // ---- Starting heading: robot front faces the drivers' RIGHT at INIT (both alliances) ----
+    // Robot heading at INIT in the drivers' frame (CCW+, 0 = away from drivers), so right = -90.
+    // Added to the Pinpoint heading in Main 2026 until a Back/Share heading reset.
+    public static final double BLUE_START_HEADING_OFFSET_RAD = -Math.PI / 2.0;
     public static final double RED_START_HEADING_OFFSET_RAD = -Math.PI / 2.0;
 
     // ---- Pinpoint odometry: forward pod's sideways offset and strafe pod's forward offset (in) ----
@@ -72,22 +74,28 @@ public final class Constants {
     public static final double TURRET_PWM_MIN_US = 500.0;
     public static final double TURRET_PWM_MAX_US = 2500.0;
     /**
-     * Safe turret servo limits; every turret command is clipped to this range. PLACEHOLDERS:
-     * both equal TURRET_HOLD_POSITION (turret locked) until measured with Turret Limit Test.
+     * Safe turret servo limits; every turret command is clipped to this range. Measured:
+     * 0.12 = 90 deg left of the rear-facing start (turret aimed at the robot's right side),
+     * 0.80 = turret aimed straight forward.
      */
-    public static final double TURRET_MIN_POSITION = 0.5;
-    public static final double TURRET_MAX_POSITION = 0.5;
+    public static final double TURRET_MIN_POSITION = 0.12;
+    public static final double TURRET_MAX_POSITION = 0.80;
     /** Turret Limit Test step per d-pad press (0.01 x ~413 deg/unit = ~4.1 deg of turret). */
     public static final double TURRET_LIMIT_TEST_STEP = 0.01;
 
     // ---- Turret tracking (TurretTracker). Angles are robot-relative, CCW-positive (deg). ----
-    /** Servo position where the turret points straight forward. PLACEHOLDER: verify. */
-    public static final double TURRET_FORWARD_POSITION = 0.5;
+    /**
+     * false = Main 2026 keeps the turret locked at TURRET_HOLD_POSITION (no Limelight tracking,
+     * no manual stick). Set true to re-enable tracking while the flywheel is on.
+     */
+    public static final boolean TURRET_TRACKING_ENABLED = false;
+    /** Servo position where the turret points straight forward (measured). */
+    public static final double TURRET_FORWARD_POSITION = 0.80;
     /**
      * +1 if increasing servo position turns the turret counter-clockwise (left, seen from
-     * above), -1 if clockwise. PLACEHOLDER: verify with Turret Limit Test.
+     * above), -1 if clockwise. Measured: 0 is left, 1 is right, so increasing = clockwise.
      */
-    public static final int TURRET_DIRECTION_SIGN = 1;
+    public static final int TURRET_DIRECTION_SIGN = -1;
     /**
      * +1 if Limelight tx is positive when the target is to the RIGHT of the crosshair (the
      * usual Limelight convention; not stated in the docs), -1 if left. Verify on the robot.
@@ -118,11 +126,14 @@ public final class Constants {
     public static final double TURRET_WRAP_MIN_TURN_RATE_DEG_PER_SEC = 10.0;
 
     // ---- Servo positions ----
-    /** Position the servo tests start the turret at; turret positions TBD from those tests. */
-    public static final double SERVO_TEST_START_POSITION = 0.5;
+    /** Position the servo tests start the turret at (same as TURRET_HOLD_POSITION). */
+    public static final double SERVO_TEST_START_POSITION = 0.35;
     /** Flower wedge positions found with ServoTest (right servo is reversed in code). */
     public static final double FLOWER_WEDGE_UP = 0.90;
     public static final double FLOWER_WEDGE_DOWN = 0.22;
-    /** Turret position Main 2026 holds until turret control is added. */
-    public static final double TURRET_HOLD_POSITION = 0.5;
+    /**
+     * Turret starting position: facing the rear of the robot. Main 2026 starts here and returns
+     * here when aiming is off.
+     */
+    public static final double TURRET_HOLD_POSITION = 0.35;
 }
