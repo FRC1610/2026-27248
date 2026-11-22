@@ -9,6 +9,7 @@ import com.qualcomm.robotcore.hardware.DcMotorSimple;
 import com.qualcomm.robotcore.hardware.DigitalChannel;
 import com.qualcomm.robotcore.hardware.HardwareMap;
 import com.qualcomm.robotcore.hardware.PIDFCoefficients;
+import com.qualcomm.robotcore.hardware.PwmControl;
 import com.qualcomm.robotcore.hardware.Servo;
 import com.qualcomm.robotcore.hardware.ServoImplEx;
 
@@ -79,7 +80,7 @@ public class RobotHardware {
         turret = hardwareMap.get(ServoImplEx.class, "turret");
         flowerWedgeLeft.setDirection(Servo.Direction.FORWARD);
         flowerWedgeRight.setDirection(Servo.Direction.REVERSE);
-        turret.setDirection(Servo.Direction.FORWARD);
+        configureTurretServo(turret);
 
         allianceButton = hardwareMap.get(DigitalChannel.class, "allianceButton");
         allianceButton.setMode(DigitalChannel.Mode.INPUT);
@@ -95,7 +96,7 @@ public class RobotHardware {
         // Keep the robot stationary during initialization while the IMU calibrates.
         pinpoint.resetPosAndIMU();
 
-        // Same hardware name and alliance pipelines as 2025-27248.
+        // Starts on the alliance's default pipeline: 8 = all red tags, 9 = all blue tags.
         limelight = hardwareMap.get(Limelight3A.class, "limelight");
         limelight.setPollRateHz(Constants.LIMELIGHT_POLL_RATE_HZ);
         selectAllianceLimelightPipeline();
@@ -216,10 +217,22 @@ public class RobotHardware {
         return flowerWedgeLeft.getPosition();
     }
 
-    /** Turret servo position, clipped to [0, 1]. */
+    /**
+     * Direction and full-range PWM (TURRET_PWM_MIN_US..MAX_US) for the turret's Axon servo.
+     * Used by every OpMode that drives the turret so a given position means the same angle
+     * whether the port is configured as "Servo" or "Full Range Servo". Does not move the servo.
+     */
+    public static void configureTurretServo(ServoImplEx servo) {
+        servo.setDirection(Servo.Direction.FORWARD);
+        servo.setPwmRange(new PwmControl.PwmRange(
+                Constants.TURRET_PWM_MIN_US, Constants.TURRET_PWM_MAX_US));
+    }
+
+    /** Turret servo position, clipped to [TURRET_MIN_POSITION, TURRET_MAX_POSITION]. */
     public void setTurretPosition(double position) {
         turret.setPwmEnable();
-        turret.setPosition(clip(position, 0, 1));
+        turret.setPosition(clip(position,
+                Constants.TURRET_MIN_POSITION, Constants.TURRET_MAX_POSITION));
     }
 
     /** Last commanded turret position (servo has no position feedback). */
@@ -256,6 +269,11 @@ public class RobotHardware {
     /** Raw digital state of indexBeam1 (true = HIGH). Which state means "beam broken" is not yet confirmed. */
     public boolean getIndexBeam1State() {
         return indexBeam1.getState();
+    }
+
+    /** True when indexBeam1 reads INDEX_BEAM_BALL_STATE, i.e. a ball is blocking the beam. */
+    public boolean isBallAtIndexer() {
+        return indexBeam1.getState() == Constants.INDEX_BEAM_BALL_STATE;
     }
 
     /**

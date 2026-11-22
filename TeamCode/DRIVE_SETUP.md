@@ -13,9 +13,22 @@ Gamepad 2 (operator) runs the mechanisms:
 | B | Indexer on/off |
 | D-pad right / left | Indexer speed +/-5% |
 | A | Flywheel on/off |
+| X | Turret tracking on/off |
 | D-pad up / down | Flywheel setpoint +/-100 RPM |
 | Y | Flower wedge up/down |
 | Hold RB / LB | **Emergency**: intake and indexer full forward / reverse |
+| Right stick X | Manual turret while tracking is on |
+
+A ball newly reaching the indexer beam turns both the flywheel and turret tracking on.
+
+The turret auto-aims at the selected alliance pipeline's AprilTag target using the
+turret-mounted Limelight (`tx`) plus Pinpoint heading changes (`TurretTracker`). When the
+target passes the end of the turret's travel, the turret swings around to the other end.
+While tracking is off the turret stays at `TURRET_HOLD_POSITION`; it starts off unless
+`TURRET_TRACKING_ON_AT_START` is true. Measured turret positions (full-range PWM): 0.00 = 90 deg left
+(counter-clockwise limit), 0.23 = forward toward the intake (start/hold), 0.45 = 90 deg right,
+0.67 = rear, 0.87 = clockwise limit. Configure tag grouping or a priority tag ID in the Limelight web
+interface; the code uses the pipeline's `tx`.
 
 **Single Gamepad Test** (Test group) keeps the previous layout with every
 control on gamepad 1.
@@ -59,14 +72,24 @@ USB-C to USB-A cable. Scan in Driver Station **Configure Robot**, then name the
 detected Ethernet Device `limelight` and save the configuration.
 
 The code uses the existing FTC SDK Limelight driver, polls at 100 Hz, and starts
-polling during initialization. As in last year's `RobotHardware.java`, blue uses
-pipeline **0** and red uses pipeline **4**. Changing `allianceButton` selects the
-corresponding pipeline; requests are sent only when the selection changes.
-The camera must already have those pipelines configured in its web interface.
+polling during initialization. Pipelines configured on the camera:
+
+| Slot | Pipeline | Constant |
+| --- | --- | --- |
+| 0 | Red Scoring Side | `PIPELINE_RED_SCORING_SIDE` |
+| 1 | Red Audience Side | `PIPELINE_RED_AUDIENCE_SIDE` |
+| 2 | Blue Audience Side | `PIPELINE_BLUE_AUDIENCE_SIDE` |
+| 3 | Blue Scoring Side | `PIPELINE_BLUE_SCORING_SIDE` |
+| 8 | All Red tags (**red alliance default**) | `PIPELINE_ALL_RED_TAGS` |
+| 9 | All Blue tags (**blue alliance default**) | `PIPELINE_ALL_BLUE_TAGS` |
+
+`allianceButton` (low = red, high = blue) selects pipeline **8** or **9**, at INIT and
+whenever the button changes; requests are sent only when the selection changes.
+The camera must already have these pipelines configured in its web interface.
 
 To configure the camera, connect it to a computer, open Limelight Hardware
 Manager or `http://limelight.local:5801`, and set team number **27248**. Configure
-the desired pipelines in slots 0 and 4. For AprilTag field-pose telemetry, load
+the pipelines in the slots listed above. For AprilTag field-pose telemetry, load
 the correct season's field map, enable **Full 3D**, and enter the measured camera
 position and orientation relative to the robot. Mount measurements and target
 settings must match the actual robot and field.
