@@ -63,9 +63,15 @@ public final class Constants {
     public static final double TURRET_SERVO_RANGE_DEG = 355.0;
     public static final double TURRET_OVERDRIVE_RATIO = 3.2;
     public static final double TURRET_REDUCTION_RATIO = 2.75;
-    /** Turret degrees per 1.0 of servo position (~413), assuming the full-range PWM below. */
-    public static final double TURRET_DEG_PER_SERVO_UNIT =
+    /** Turret degrees per 1.0 of servo position from the specs above (~413); reference only. */
+    public static final double TURRET_SPEC_DEG_PER_SERVO_UNIT =
             TURRET_SERVO_RANGE_DEG * TURRET_OVERDRIVE_RATIO / TURRET_REDUCTION_RATIO;
+    /**
+     * Measured turret degrees per 1.0 of servo position (~403), with the full-range PWM below:
+     * 0.00 = 90 deg left, 0.23 = forward, 0.45 = 90 deg right, 0.67 = 180 deg (rear), so
+     * 270 deg over 0.67. All four points fit within ~3 deg (less than one 0.01 step).
+     */
+    public static final double TURRET_DEG_PER_SERVO_UNIT = 270.0 / 0.67;
     /**
      * Turret PWM pulse range (microseconds), applied in code. Same as the SDK's built-in
      * "Full Range Servo" type (500-2500); a plain "Servo" defaults to 600-2400, which would
@@ -75,12 +81,14 @@ public final class Constants {
     public static final double TURRET_PWM_MAX_US = 2500.0;
     /**
      * Safe turret servo limits; every turret command is clipped to this range. Measured:
-     * 0.12 = 90 deg left of the rear-facing start (turret aimed at the robot's right side),
-     * 0.80 = turret aimed straight forward.
+     * 0.00 = counter-clockwise limit, 90 deg left of forward;
+     * 0.87 = clockwise limit, ~258 deg right of forward (past the rear).
+     * About 350 deg of travel in total, so there is a ~10 deg gap the turret can't reach,
+     * just behind 90 deg left; TurretTracker wraps around it.
      */
-    public static final double TURRET_MIN_POSITION = 0.12;
-    public static final double TURRET_MAX_POSITION = 0.80;
-    /** Turret Limit Test step per d-pad press (0.01 x ~413 deg/unit = ~4.1 deg of turret). */
+    public static final double TURRET_MIN_POSITION = 0.00;
+    public static final double TURRET_MAX_POSITION = 0.87;
+    /** Turret Limit Test step per d-pad press (0.01 x ~403 deg/unit = ~4.0 deg of turret). */
     public static final double TURRET_LIMIT_TEST_STEP = 0.01;
 
     // ---- Turret tracking (TurretTracker). Angles are robot-relative, CCW-positive (deg). ----
@@ -89,11 +97,12 @@ public final class Constants {
      * no manual stick). Set true to re-enable tracking while the flywheel is on.
      */
     public static final boolean TURRET_TRACKING_ENABLED = false;
-    /** Servo position where the turret points straight forward (measured). */
-    public static final double TURRET_FORWARD_POSITION = 0.80;
+    /** Servo position where the turret points straight forward, toward the intake (measured). */
+    public static final double TURRET_FORWARD_POSITION = 0.23;
     /**
      * +1 if increasing servo position turns the turret counter-clockwise (left, seen from
-     * above), -1 if clockwise. Measured: 0 is left, 1 is right, so increasing = clockwise.
+     * above), -1 if clockwise. Measured: 0.00 is 90 deg left, 0.45 is 90 deg right, so
+     * increasing = clockwise.
      */
     public static final int TURRET_DIRECTION_SIGN = -1;
     /**
@@ -127,13 +136,13 @@ public final class Constants {
 
     // ---- Servo positions ----
     /** Position the servo tests start the turret at (same as TURRET_HOLD_POSITION). */
-    public static final double SERVO_TEST_START_POSITION = 0.35;
+    public static final double SERVO_TEST_START_POSITION = 0.23;
     /** Flower wedge positions found with ServoTest (right servo is reversed in code). */
     public static final double FLOWER_WEDGE_UP = 0.90;
     public static final double FLOWER_WEDGE_DOWN = 0.22;
     /**
-     * Turret starting position: facing the rear of the robot. Main 2026 starts here and returns
-     * here when aiming is off.
+     * Turret starting position: facing forward, toward the intake (= TURRET_FORWARD_POSITION).
+     * Main 2026 starts here and returns here when aiming is off.
      */
-    public static final double TURRET_HOLD_POSITION = 0.35;
+    public static final double TURRET_HOLD_POSITION = 0.23;
 }

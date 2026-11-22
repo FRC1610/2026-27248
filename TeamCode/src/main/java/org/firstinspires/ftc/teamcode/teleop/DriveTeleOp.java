@@ -30,7 +30,7 @@ public class DriveTeleOp extends LinearOpMode {
             // Flower wedge starts UP, as in the test OpModes (moves when INIT is pressed).
             boolean wedgeUp = true;
             robot.setFlowerWedgePosition(Constants.FLOWER_WEDGE_UP);
-            // Turret starts at the hold position (facing the rear; moves when INIT is pressed).
+            // Turret starts at the hold position (facing forward; moves when INIT is pressed).
             // If TURRET_TRACKING_ENABLED, TurretTracker aims it while the flywheel is on;
             // otherwise it stays locked at the hold position. Commands are clipped to
             // TURRET_MIN/MAX_POSITION.

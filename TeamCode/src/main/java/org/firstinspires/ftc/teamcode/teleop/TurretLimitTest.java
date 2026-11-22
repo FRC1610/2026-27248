@@ -11,8 +11,8 @@ import org.firstinspires.ftc.teamcode.RobotHardware;
  * Finds TURRET_MIN_POSITION and TURRET_MAX_POSITION. Only the turret servo is used.
  *
  * <p>When START is pressed the turret moves to TURRET_HOLD_POSITION. Gamepad1 d-pad left/right
- * then moves it -/+ TURRET_LIMIT_TEST_STEP (0.01, about 4.1 deg of turret: Axon MAX 355 deg x
- * 3.2 overdrive / 2.75 turret reduction) per press, within 0-1. This test deliberately ignores the current TURRET_MIN/MAX_POSITION so it can find them.
+ * then moves it -/+ TURRET_LIMIT_TEST_STEP (0.01, about 4.0 deg of turret at the measured
+ * ~403 deg per 1.0 of servo position) per press, within 0-1. This test deliberately ignores the current TURRET_MIN/MAX_POSITION so it can find them.
  * The servo is relaxed (PWM off) when the OpMode stops.
  */
 @TeleOp(name = "Turret Limit Test", group = "Test")

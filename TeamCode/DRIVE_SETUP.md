@@ -20,9 +20,11 @@ Gamepad 2 (operator) runs the mechanisms:
 
 The turret auto-aims at the selected alliance pipeline's AprilTag target using the
 turret-mounted Limelight (`tx`) plus Pinpoint heading changes (`TurretTracker`). When the
-target passes the end of the turret's travel, the turret swings around to the other end. It
-stays locked at 0.5 until `TURRET_MIN_POSITION` / `TURRET_MAX_POSITION` are measured with
-**Turret Limit Test**. Configure tag grouping or a priority tag ID in the Limelight web
+target passes the end of the turret's travel, the turret swings around to the other end.
+Tracking only runs when `TURRET_TRACKING_ENABLED` is true; otherwise the turret stays at
+`TURRET_HOLD_POSITION`. Measured turret positions (full-range PWM): 0.00 = 90 deg left
+(counter-clockwise limit), 0.23 = forward toward the intake (start/hold), 0.45 = 90 deg right,
+0.67 = rear, 0.87 = clockwise limit. Configure tag grouping or a priority tag ID in the Limelight web
 interface; the code uses the pipeline's `tx`.
 
 **Single Gamepad Test** (Test group) keeps the previous layout with every
