@@ -9,8 +9,12 @@ package org.firstinspires.ftc.teamcode;
  * at TURRET_FORWARD_POSITION.
  *
  * <ul>
- *   <li><b>Vision:</b> when a fresh target is visible, tx is the turret's aim error (the camera
- *       turns with the turret); a fraction of it (TURRET_VISION_GAIN) is corrected each loop.
+ *   <li><b>Vision:</b> tx is the turret's aim error (the camera turns with the turret; tx &gt; 0 =
+ *       turret too far left). A fraction of it (TURRET_VISION_GAIN) is corrected, but only once
+ *       per new Limelight frame and only after the turret should have finished the previous
+ *       correction (travel time + TURRET_VISION_SETTLE_SEC). Without this, the same tx (which
+ *       doesn't change until the servo has moved and a new frame arrives) was re-applied every
+ *       loop and drove the turret to its limit.
  *   <li><b>Pinpoint assist:</b> each loop the robot's heading change is subtracted from the aim,
  *       so the turret keeps pointing the same way on the field while the robot turns, including
  *       while the target is out of view. The Limelight then only corrects what is left.
@@ -31,7 +35,7 @@ public class TurretTracker {
     public enum State {
         /** No target seen yet: holding the starting position. */
         WAITING_FOR_TARGET,
-        /** Following a fresh Limelight target. */
+        /** Following a fresh Limelight target (correcting, or waiting for the turret to settle). */
         TRACKING,
         /** Target not visible: holding the last field direction using the Pinpoint. */
         HOLDING,
@@ -40,7 +44,9 @@ public class TurretTracker {
         /** Target out of the turret's reach: waiting at the end where it will reappear. */
         WAITING_AT_LIMIT,
         /** Operator is turning the turret with the stick. */
-        MANUAL
+        MANUAL,
+        /** Limelight not sending data: back at TURRET_HOLD_POSITION, waiting for it to return. */
+        LIMELIGHT_LOST
     }
 
     private final double minAngleDeg;
@@ -50,7 +56,12 @@ public class TurretTracker {
     private double aimDeg;
     private boolean hasAim = false;
     private double lastHeadingDeg = Double.NaN;
-    private double swingTimeLeftSec = 0;
+    /** Time left before the Limelight is trusted again after a correction or swing (s). */
+    private double visionHoldoffSec = 0;
+    /** Control Hub timestamp of the last Limelight frame seen, to use each frame only once. */
+    private long lastFrameStampNanos = Long.MIN_VALUE;
+    /** True from a big swing (wrap) until its holdoff runs out. */
+    private boolean swinging = false;
     private State state = State.WAITING_FOR_TARGET;
 
     /** @param startPosition servo position the turret is at when tracking starts */
@@ -84,17 +95,46 @@ public class TurretTracker {
     }
 
     /**
+     * Call instead of {@link #update} while the Limelight is not sending data. Forgets the
+     * target and returns the servo position for TURRET_HOLD_POSITION (the INIT position, kept
+     * within the limits). When data returns, tracking starts again from there.
+     */
+    public double limelightLost() {
+        commandedDeg = clamp(positionToAngle(Constants.TURRET_HOLD_POSITION),
+                minAngleDeg, maxAngleDeg);
+        aimDeg = commandedDeg;
+        hasAim = false;
+        visionHoldoffSec = 0;
+        lastFrameStampNanos = Long.MIN_VALUE;
+        swinging = false;
+        lastHeadingDeg = Double.NaN;
+        state = State.LIMELIGHT_LOST;
+        return angleToPosition(commandedDeg);
+    }
+
+    /**
+     * True if the Limelight is sending data: there is a result and it is no older than
+     * LIMELIGHT_LOST_TIMEOUT_MS. (A fresh result with no target still counts as connected.)
+     */
+    public static boolean isLimelightReceiving(
+            com.qualcomm.hardware.limelightvision.LLResult result) {
+        return result != null && result.getStaleness() <= Constants.LIMELIGHT_LOST_TIMEOUT_MS;
+    }
+
+    /**
      * Runs one control step.
      *
      * @param headingRad    Pinpoint heading (radians, CCW+); NaN/infinite disables the assist
      * @param targetVisible true only for a valid, fresh result from the selected pipeline
      * @param txDeg         Limelight tx (deg); ignored unless targetVisible
+     * @param frameStampNanos LLResult.getControlHubTimeStampNanos() of the result (changes with
+     *                      every new frame); used so each frame's tx is applied only once
      * @param manualInput   -1..1, positive turns the turret counter-clockwise (left)
      * @param dtSec         seconds since the previous call
      * @return servo position to command
      */
     public double update(double headingRad, boolean targetVisible, double txDeg,
-                         double manualInput, double dtSec) {
+                         long frameStampNanos, double manualInput, double dtSec) {
         dtSec = Math.max(0, Math.min(dtSec, 0.1));
 
         // Robot rotation since the last loop (deg, CCW+), from the Pinpoint.
@@ -111,20 +151,33 @@ public class TurretTracker {
         double turretNowDeg = commandedDeg - rotationDeg;
         if (hasAim) aimDeg -= rotationDeg;
 
-        swingTimeLeftSec = Math.max(0, swingTimeLeftSec - dtSec);
-        boolean visionUsable = targetVisible && Double.isFinite(txDeg) && swingTimeLeftSec == 0;
+        // Use each Limelight frame at most once, and only after the turret has settled from the
+        // previous correction. Frames that arrive while waiting are skipped (but remembered), so
+        // the next correction uses a frame taken after the turret stopped moving.
+        visionHoldoffSec = Math.max(0, visionHoldoffSec - dtSec);
+        if (visionHoldoffSec == 0) swinging = false;
+        boolean newFrame = frameStampNanos != lastFrameStampNanos;
+        lastFrameStampNanos = frameStampNanos;
+        boolean visionUsable = targetVisible && Double.isFinite(txDeg) && newFrame
+                && visionHoldoffSec == 0;
+        boolean correcting = false;
 
         if (Math.abs(manualInput) > Constants.TURRET_MANUAL_DEADBAND) {
             aimDeg = commandedDeg + manualInput * Constants.TURRET_MANUAL_RATE_DEG_PER_SEC * dtSec;
             hasAim = true;
+            visionHoldoffSec = Constants.TURRET_VISION_SETTLE_SEC;
             state = State.MANUAL;
         } else if (visionUsable) {
-            // Camera turns with the turret: target to the right (tx > 0) means turn clockwise.
+            // Camera turns with the turret: target to the right (tx > 0) = turret too far left,
+            // so turn clockwise (negative angle).
             double errorDeg = -Constants.TURRET_TX_SIGN * txDeg;
             if (Math.abs(errorDeg) < Constants.TURRET_TX_DEADBAND_DEG) errorDeg = 0;
             aimDeg = turretNowDeg + Constants.TURRET_VISION_GAIN * errorDeg;
             hasAim = true;
+            correcting = true;
             state = State.TRACKING;
+        } else if (hasAim && targetVisible) {
+            state = State.TRACKING; // waiting for the turret to settle / a new frame
         } else if (!hasAim) {
             state = State.WAITING_FOR_TARGET;
             return angleToPosition(commandedDeg);
@@ -134,13 +187,18 @@ public class TurretTracker {
 
         double targetDeg = reachableAngle(aimDeg, rotationDeg, dtSec);
         double moveDeg = Math.abs(targetDeg - commandedDeg);
+        double travelSec = moveDeg / Constants.TURRET_SWING_SPEED_DEG_PER_SEC;
+        if (correcting) {
+            // Don't trust the Limelight again until this correction should be finished.
+            visionHoldoffSec = travelSec + Constants.TURRET_VISION_SETTLE_SEC;
+        }
         if (moveDeg > 90) {
             // Big swing (wrap to the other end): ignore the Limelight until it should be done.
-            swingTimeLeftSec = moveDeg / Constants.TURRET_SWING_SPEED_DEG_PER_SEC;
-            state = State.SWINGING;
-        } else if (swingTimeLeftSec > 0 && state != State.MANUAL) {
-            state = State.SWINGING;
+            visionHoldoffSec = Math.max(visionHoldoffSec,
+                    travelSec + Constants.TURRET_VISION_SETTLE_SEC);
+            swinging = true;
         }
+        if (swinging && state != State.MANUAL) state = State.SWINGING;
         commandedDeg = targetDeg;
         // Keep the aim close to the commanded angle so it doesn't wind up past +/-360.
         aimDeg = commandedDeg + wrap180(aimDeg - commandedDeg);

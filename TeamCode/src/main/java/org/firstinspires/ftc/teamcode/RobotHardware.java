@@ -96,7 +96,7 @@ public class RobotHardware {
         // Keep the robot stationary during initialization while the IMU calibrates.
         pinpoint.resetPosAndIMU();
 
-        // Same hardware name and alliance pipelines as 2025-27248.
+        // Starts on the alliance's default pipeline: 8 = all red tags, 9 = all blue tags.
         limelight = hardwareMap.get(Limelight3A.class, "limelight");
         limelight.setPollRateHz(Constants.LIMELIGHT_POLL_RATE_HZ);
         selectAllianceLimelightPipeline();

@@ -26,10 +26,23 @@ public final class Constants {
     public static final double FORWARD_POD_Y = -3.375;
     public static final double STRAFE_POD_X = 5.5625;
 
-    // ---- Limelight pipelines ----
-    public static final int BLUE_VISION_PIPELINE = 0;
-    public static final int RED_VISION_PIPELINE = 4;
+    // ---- Limelight pipelines (slots configured in the Limelight web interface) ----
+    public static final int PIPELINE_RED_SCORING_SIDE = 0;
+    public static final int PIPELINE_RED_AUDIENCE_SIDE = 1;
+    public static final int PIPELINE_BLUE_AUDIENCE_SIDE = 2;
+    public static final int PIPELINE_BLUE_SCORING_SIDE = 3;
+    public static final int PIPELINE_ALL_RED_TAGS = 8;
+    public static final int PIPELINE_ALL_BLUE_TAGS = 9;
+    /** Default pipeline for each alliance, chosen from allianceButton (low = red, high = blue). */
+    public static final int RED_VISION_PIPELINE = PIPELINE_ALL_RED_TAGS;
+    public static final int BLUE_VISION_PIPELINE = PIPELINE_ALL_BLUE_TAGS;
     public static final int LIMELIGHT_POLL_RATE_HZ = 100;
+    /**
+     * If the Limelight sends no new result for this long (ms), it is treated as disconnected and
+     * turret tracking returns the turret to TURRET_HOLD_POSITION. Normal result age is well
+     * under 100 ms. Starting value.
+     */
+    public static final double LIMELIGHT_LOST_TIMEOUT_MS = 500.0;
 
     // ---- Flywheel: goBILDA 5203 Yellow Jacket 6000 RPM (1:1), direct drive to the flywheel ----
     public static final double FLYWHEEL_TICKS_PER_REV = 28.0;
@@ -93,10 +106,11 @@ public final class Constants {
 
     // ---- Turret tracking (TurretTracker). Angles are robot-relative, CCW-positive (deg). ----
     /**
-     * false = Main 2026 keeps the turret locked at TURRET_HOLD_POSITION (no Limelight tracking,
-     * no manual stick). Set true to re-enable tracking while the flywheel is on.
+     * Whether Main 2026 starts with turret tracking on. Gamepad2 X toggles tracking during the
+     * match, and a ball newly reaching the indexer beam turns it on. While off, the turret holds
+     * TURRET_HOLD_POSITION (no Limelight tracking, no manual stick).
      */
-    public static final boolean TURRET_TRACKING_ENABLED = false;
+    public static final boolean TURRET_TRACKING_ON_AT_START = false;
     /** Servo position where the turret points straight forward, toward the intake (measured). */
     public static final double TURRET_FORWARD_POSITION = 0.23;
     /**
@@ -106,15 +120,22 @@ public final class Constants {
      */
     public static final int TURRET_DIRECTION_SIGN = -1;
     /**
-     * +1 if Limelight tx is positive when the target is to the RIGHT of the crosshair (the
-     * usual Limelight convention; not stated in the docs), -1 if left. Verify on the robot.
+     * +1 if Limelight tx is positive when the target is to the RIGHT of the crosshair, -1 if
+     * left. Team spec: tx > 0 = turret too far left (turn clockwise/right), tx < 0 = turret too
+     * far right (turn counter-clockwise/left), which is +1.
      */
     public static final int TURRET_TX_SIGN = 1;
     /**
-     * Fraction of the Limelight error corrected per loop. Below 1 because the servo has no
-     * position feedback and the image is slightly old. Starting value; tune.
+     * Fraction of the Limelight error corrected per correction. Corrections are made only on a
+     * new Limelight frame taken after the turret has settled from the previous one, so each
+     * tx is used once. Slightly below 1 to avoid overshoot. Starting value; tune.
      */
-    public static final double TURRET_VISION_GAIN = 0.5;
+    public static final double TURRET_VISION_GAIN = 0.8;
+    /**
+     * Extra wait (s) after a correction's estimated servo travel time before trusting the
+     * Limelight again: covers camera capture/processing latency and servo settling.
+     */
+    public static final double TURRET_VISION_SETTLE_SEC = 0.15;
     /** Ignore Limelight errors smaller than this (deg) to stop jitter. */
     public static final double TURRET_TX_DEADBAND_DEG = 0.5;
     /** Ignore Limelight results older than this (ms). */

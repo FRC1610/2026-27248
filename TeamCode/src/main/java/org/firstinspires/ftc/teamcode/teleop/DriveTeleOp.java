@@ -31,8 +31,8 @@ public class DriveTeleOp extends LinearOpMode {
             boolean wedgeUp = true;
             robot.setFlowerWedgePosition(Constants.FLOWER_WEDGE_UP);
             // Turret starts at the hold position (facing forward; moves when INIT is pressed).
-            // If TURRET_TRACKING_ENABLED, TurretTracker aims it while the flywheel is on;
-            // otherwise it stays locked at the hold position. Commands are clipped to
+            // While tracking is on (gamepad2 X, or a ball reaching the indexer beam), TurretTracker
+            // aims it; otherwise it holds the hold position. Commands are clipped to
             // TURRET_MIN/MAX_POSITION.
             robot.setTurretPosition(Constants.TURRET_HOLD_POSITION);
             TurretTracker turretTracker = new TurretTracker(Constants.TURRET_HOLD_POSITION);
@@ -41,16 +41,15 @@ public class DriveTeleOp extends LinearOpMode {
             telemetry.addLine("Robot must start with its front facing the drivers' RIGHT"
                     + " (-90 deg start offset).");
             telemetry.addLine("GP1 (driver): Back/Share makes current facing 'forward' (no offset).");
-            telemetry.addLine("GP2: A flywheel + turret aim on/off, dpad up/down RPM +/-100.");
-            telemetry.addLine("A ball reaching the indexer beam turns flywheel + aim on.");
+            telemetry.addLine("GP2: A flywheel on/off, dpad up/down RPM +/-100.");
+            telemetry.addLine("GP2: X turret tracking on/off.");
+            telemetry.addLine("A ball reaching the indexer beam turns flywheel + tracking on.");
             telemetry.addLine("GP2: B indexer on/off, dpad right/left indexer +/-5%.");
             telemetry.addLine("GP2: RT intake, LT reverse intake; Y wedge up/down.");
             telemetry.addLine("GP2: hold RB/LB = EMERGENCY intake+indexer full fwd/rev.");
-            if (Constants.TURRET_TRACKING_ENABLED) {
-                telemetry.addLine("GP2: right stick X = manual turret while aiming is on.");
-            } else {
-                telemetry.addLine("Turret tracking DISABLED: turret locked at start position.");
-            }
+            telemetry.addLine("GP2: right stick X = manual turret while tracking is on.");
+            telemetry.addLine("Turret tracking starts "
+                    + (Constants.TURRET_TRACKING_ON_AT_START ? "ON." : "OFF (turret at start)."));
             telemetry.addData("Limelight requested pipeline", robot.getSelectedVisionPipeline());
             telemetry.update();
 
@@ -64,6 +63,8 @@ public class DriveTeleOp extends LinearOpMode {
             boolean startHeadingOffsetActive = true;
             double speed = Constants.DRIVE_FULL_SPEED;
             boolean aPreviouslyPressed = false;
+            boolean xPreviouslyPressed = false;
+            boolean turretTrackingOn = Constants.TURRET_TRACKING_ON_AT_START;
             boolean dpadUpPreviouslyPressed = false;
             boolean dpadDownPreviouslyPressed = false;
             boolean flywheelOn = false;
@@ -119,29 +120,39 @@ public class DriveTeleOp extends LinearOpMode {
                     telemetry.addLine("Drive stopped: Pinpoint must be ready with a valid heading.");
                 }
 
-                // Flywheel + turret aim on/off. A ball newly breaking the indexer beam turns them
-                // on (only on the not-blocked -> blocked change, so turning them off with A while
-                // a ball is still in the beam does not turn them straight back on). Gamepad2 A
-                // toggles them; it is checked after the beam so a press always wins.
+                // Flywheel and turret tracking on/off. A ball newly breaking the indexer beam turns
+                // both on (only on the not-blocked -> blocked change, so turning them off while a
+                // ball is still in the beam does not turn them straight back on). Gamepad2 A
+                // toggles the flywheel and X toggles tracking; they are checked after the beam so
+                // a press always wins.
                 boolean ballPresent = robot.isBallAtIndexer();
-                if (ballPresent && !ballPreviouslyPresent) flywheelOn = true;
+                if (ballPresent && !ballPreviouslyPresent) {
+                    flywheelOn = true;
+                    turretTrackingOn = true;
+                }
                 ballPreviouslyPresent = ballPresent;
                 if (gamepad2.a && !aPreviouslyPressed) flywheelOn = !flywheelOn;
                 aPreviouslyPressed = gamepad2.a;
-                boolean turretAiming = flywheelOn && Constants.TURRET_TRACKING_ENABLED;
+                if (gamepad2.x && !xPreviouslyPressed) turretTrackingOn = !turretTrackingOn;
+                xPreviouslyPressed = gamepad2.x;
+                boolean turretAiming = turretTrackingOn;
 
                 // Turret: while aiming, TurretTracker uses the turret-mounted Limelight's tx plus
                 // Pinpoint heading changes (gamepad2 right stick X = manual). Only a valid, fresh
-                // result from the selected alliance pipeline counts as a target. Otherwise the
-                // turret returns to the hold position and the tracker starts fresh next time.
-                if (turretAiming) {
-                    LLResult vision = robot.getLatestLimelightResult();
+                // result from the selected alliance pipeline counts as a target. If the Limelight
+                // stops sending data, the turret returns to the INIT (hold) position until it
+                // comes back. When not aiming, the turret holds and the tracker starts fresh.
+                LLResult vision = robot.getLatestLimelightResult();
+                if (turretAiming && !TurretTracker.isLimelightReceiving(vision)) {
+                    robot.setTurretPosition(turretTracker.limelightLost());
+                } else if (turretAiming) {
                     boolean targetVisible = vision != null && vision.isValid()
                             && vision.getPipelineIndex() == robot.getSelectedVisionPipeline()
                             && vision.getStaleness() <= Constants.TURRET_MAX_VISION_AGE_MS;
                     double turretPosition = turretTracker.update(
                             headingValid ? heading : Double.NaN,
                             targetVisible, targetVisible ? vision.getTx() : Double.NaN,
+                            vision.getControlHubTimeStampNanos(), // new frame detection
                             -gamepad2.right_stick_x, // stick right = turn clockwise (right)
                             dtSec);
                     robot.setTurretPosition(turretPosition);
@@ -255,8 +266,8 @@ public class DriveTeleOp extends LinearOpMode {
                         AngleUnit.normalizeDegrees(Math.toDegrees(heading)),
                         startHeadingOffsetActive ? " (start offset)" : "");
                 telemetry.addData("Turret", "%s, pos %.3f",
-                        turretAiming ? turretTracker.getState()
-                                : Constants.TURRET_TRACKING_ENABLED ? "OFF (hold)" : "LOCKED (tracking disabled)",
+                        turretAiming ? "TRACKING ON - " + turretTracker.getState()
+                                : "TRACKING OFF (hold)",
                         robot.getTurretPosition());
                 telemetry.addData("Turret angle (deg)", "cmd %.1f, aim %.1f, range %.1f..%.1f",
                         turretTracker.getCommandedAngleDeg(), turretTracker.getAimAngleDeg(),
