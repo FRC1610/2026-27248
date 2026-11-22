@@ -53,7 +53,13 @@ public class DriveTeleOp extends LinearOpMode {
             telemetry.addData("Limelight requested pipeline", robot.getSelectedVisionPipeline());
             telemetry.update();
 
-            waitForStart();
+            // INIT loop instead of waitForStart() so the lights (and Limelight pipeline) follow
+            // allianceButton until START.
+            while (opModeInInit()) {
+                robot.selectAllianceLimelightPipeline();
+                robot.lights.showAlliance(robot.isRedAlliance());
+                idle();
+            }
             if (isStopRequested()) return;
 
             boolean leftStickPreviouslyPressed = false;
@@ -225,6 +231,11 @@ public class DriveTeleOp extends LinearOpMode {
                 // Flywheel/indexer RPMs are sent as plain numbers so Panels can graph them.
                 // "Setpoint" is the commanded RPM (0 when off); "selected" is what A turns on.
                 double flywheelRpm = robot.getFlywheelRpm();
+                // Lights: alliance color, or pulsing orange/green with a ball loaded.
+                robot.lights.update(robot.isRedAlliance(), ballPresent, flywheelOn,
+                        flywheelSetpointRpm, flywheelRpm);
+                telemetry.addData("Lights", robot.lights.isPresent()
+                        ? String.valueOf(robot.lights.getState()) : "no prism configured");
                 telemetry.addData("Flywheel status", flywheelOn ? "ON" : "OFF");
                 telemetry.addData("Flywheel setpoint (RPM)",
                         (double) Math.round(flywheelOn ? flywheelSetpointRpm : 0));

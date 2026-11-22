@@ -69,6 +69,27 @@ public final class Constants {
      */
     public static final boolean INDEX_BEAM_BALL_STATE = false;
 
+    // ---- goBILDA Prism LED driver (I2C, configured as "prism") ----
+    /**
+     * Artboards saved on the Prism by Prism Light Setup (run once). Artboard 0 is the power-on
+     * default; the TeleOps only switch between these.
+     */
+    public static final int PRISM_ARTBOARD_POWER_ON = 0;      // yellow snakes (power on / idle)
+    public static final int PRISM_ARTBOARD_RED = 1;           // red snakes (red alliance)
+    public static final int PRISM_ARTBOARD_BLUE = 2;          // blue snakes (blue alliance)
+    public static final int PRISM_ARTBOARD_BALL_SPINUP = 3;   // purple snakes
+    public static final int PRISM_ARTBOARD_BALL_READY = 4;    // green snakes
+    /** LEDs in the chain (indexes 0 to PRISM_LED_COUNT - 1); every animation covers all of them. */
+    public static final int PRISM_LED_COUNT = 48;
+    /** LED brightness (0-100) for all artboards. */
+    public static final int PRISM_BRIGHTNESS = 50;
+    /** Snake speed (0-1) for all artboards. */
+    public static final float PRISM_SNAKE_SPEED = 0.3f;
+    /** LEDs between consecutive snakes on all artboards. */
+    public static final int PRISM_SNAKE_SPACING = 4;
+    /** Flywheel counts as "at speed" (green) within this many RPM of its setpoint. */
+    public static final double LIGHTS_FLYWHEEL_READY_TOLERANCE_RPM = 50.0;
+
     // ---- Driver controls ----
     public static final double TRIGGER_DEADBAND = 0.05;
 

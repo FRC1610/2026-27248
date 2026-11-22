@@ -20,6 +20,8 @@ import org.firstinspires.ftc.robotcore.external.navigation.Pose2D;
 /** Drive configuration carried over from 2025-27248 RobotHardware and PedroConstants. */
 public class RobotHardware {
     public GoBildaPinpointDriver pinpoint;
+    /** goBILDA Prism status lights (does nothing if "prism" isn't configured). */
+    public RobotLights lights;
     private Limelight3A limelight;
     private LLResult latestLimelightResult;
     private int selectedVisionPipeline = -1;
@@ -87,6 +89,10 @@ public class RobotHardware {
 
         indexBeam1 = hardwareMap.get(DigitalChannel.class, "indexBeam1");
         indexBeam1.setMode(DigitalChannel.Mode.INPUT);
+
+        // Status lights: yellow from power-on until here, then the alliance color.
+        lights = new RobotLights(hardwareMap);
+        lights.showAlliance(isRedAlliance());
 
         pinpoint = hardwareMap.get(GoBildaPinpointDriver.class, "pinpoint");
         pinpoint.setOffsets(Constants.FORWARD_POD_Y, Constants.STRAFE_POD_X, DistanceUnit.INCH);
@@ -356,5 +362,7 @@ public class RobotHardware {
         if (flowerWedgeLeft != null) flowerWedgeLeft.setPwmDisable();
         if (flowerWedgeRight != null) flowerWedgeRight.setPwmDisable();
         if (turret != null) turret.setPwmDisable();
+        // Flywheel is off now: back to the yellow idle lights (don't leave snakes showing).
+        if (lights != null) lights.show(RobotLights.State.YELLOW_IDLE);
     }
 }
