@@ -25,7 +25,7 @@ package org.firstinspires.ftc.teamcode;
 import static org.firstinspires.ftc.teamcode.Prism.GoBildaPrismDriver.LayerHeight;
 
 import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
-import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
+import com.qualcomm.robotcore.eventloop.opmode.Utility;
 
 import org.firstinspires.ftc.teamcode.Prism.Color;
 import org.firstinspires.ftc.teamcode.Prism.GoBildaPrismDriver;
@@ -50,7 +50,8 @@ import java.util.concurrent.TimeUnit;
  *
  */
 
-@TeleOp(name="Prism Configurator", group="Linear OpMode")
+// Team change: listed under the Driver Station's Utility menu (was @TeleOp, group "Linear OpMode").
+@Utility(name="Prism Configurator", description="goBILDA Prism Artboard editor")
 //@Disabled
 
 public class GoBildaPrismConfigurator extends LinearOpMode {

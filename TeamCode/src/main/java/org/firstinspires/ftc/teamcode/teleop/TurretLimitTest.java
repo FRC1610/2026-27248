@@ -3,7 +3,7 @@ package org.firstinspires.ftc.teamcode.teleop;
 import com.qualcomm.hardware.limelightvision.LLResult;
 import com.qualcomm.hardware.limelightvision.Limelight3A;
 import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
-import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
+import com.qualcomm.robotcore.eventloop.opmode.Utility;
 import com.qualcomm.robotcore.hardware.DigitalChannel;
 import com.qualcomm.robotcore.hardware.ServoImplEx;
 import com.qualcomm.robotcore.util.ElapsedTime;
@@ -30,7 +30,8 @@ import org.firstinspires.ftc.teamcode.TurretTracker;
  * </ul>
  * The servo is relaxed (PWM off) and the Limelight stopped when the OpMode stops.
  */
-@TeleOp(name = "Turret Limit Test", group = "Test")
+@Utility(name = "Turret Limit Test",
+        description = "Find turret limits; A toggles Limelight tracking")
 public class TurretLimitTest extends LinearOpMode {
 
     @Override

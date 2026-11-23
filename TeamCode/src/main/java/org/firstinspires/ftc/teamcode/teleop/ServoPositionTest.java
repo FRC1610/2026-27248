@@ -1,7 +1,7 @@
 package org.firstinspires.ftc.teamcode.teleop;
 
 import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
-import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
+import com.qualcomm.robotcore.eventloop.opmode.Utility;
 import com.qualcomm.robotcore.hardware.Servo;
 import com.qualcomm.robotcore.hardware.ServoImplEx;
 
@@ -17,7 +17,8 @@ import java.util.Locale;
  * SERVO_TEST_START_POSITION, facing forward), X disables (relaxes) it,
  * d-pad up/down nudges +/-0.01, right/left bumper nudges +/-0.001.
  */
-@TeleOp(name = "Servo Position Test", group = "Test")
+@Utility(name = "Servo Position Test",
+        description = "Find flower wedge and turret servo positions")
 public class ServoPositionTest extends LinearOpMode {
     private static final double START_POSITION = Constants.SERVO_TEST_START_POSITION;
     private static final double WEDGE_START_POSITION = Constants.FLOWER_WEDGE_UP;

@@ -3,7 +3,7 @@ package org.firstinspires.ftc.teamcode.teleop;
 import com.qualcomm.hardware.gobilda.GoBildaPinpointDriver;
 import com.qualcomm.hardware.limelightvision.LLResult;
 import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
-import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
+import com.qualcomm.robotcore.eventloop.opmode.Utility;
 import com.qualcomm.robotcore.hardware.PIDFCoefficients;
 
 import org.firstinspires.ftc.robotcore.external.navigation.AngleUnit;
@@ -14,7 +14,8 @@ import org.firstinspires.ftc.teamcode.Constants;
 import org.firstinspires.ftc.teamcode.RobotHardware;
 
 /** Copy of Main 2026 with every control on gamepad 1, kept for single-driver testing. */
-@TeleOp(name = "Single Gamepad Test", group = "Test")
+@Utility(name = "Single Gamepad Test",
+        description = "Main 2026 with every control on gamepad 1")
 public class SingleGamepadTest extends LinearOpMode {
     private final RobotHardware robot = new RobotHardware();
 

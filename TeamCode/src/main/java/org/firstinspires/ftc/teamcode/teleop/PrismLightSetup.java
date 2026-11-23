@@ -1,7 +1,7 @@
 package org.firstinspires.ftc.teamcode.teleop;
 
 import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
-import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
+import com.qualcomm.robotcore.eventloop.opmode.Utility;
 
 import org.firstinspires.ftc.teamcode.Prism.GoBildaPrismDriver;
 import org.firstinspires.ftc.teamcode.RobotLights;
@@ -14,7 +14,8 @@ import org.firstinspires.ftc.teamcode.RobotLights;
  *
  * <p>Gamepad1 after START: A = save the Artboards; d-pad left/right = preview each one.
  */
-@TeleOp(name = "Prism Light Setup", group = "Test")
+@Utility(name = "Prism Light Setup",
+        description = "Saves the robot's light Artboards to the Prism (run once)")
 public class PrismLightSetup extends LinearOpMode {
 
     private static final String[] NAMES = {
