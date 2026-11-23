@@ -276,7 +276,7 @@ public class RobotHardware {
         return !allianceButton.getState();
     }
 
-    /** Raw digital state of indexBeam1 (true = HIGH). Which state means "beam broken" is not yet confirmed. */
+    /** Raw digital state of indexBeam1 (true = HIGH). LOW means a ball is blocking the beam. */
     public boolean getIndexBeam1State() {
         return indexBeam1.getState();
     }

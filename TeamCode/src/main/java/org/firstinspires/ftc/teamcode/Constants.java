@@ -78,9 +78,8 @@ public final class Constants {
 
     // ---- Indexer beam sensor (indexBeam1) ----
     /**
-     * indexBeam1 reading (DigitalChannel.getState()) that means a ball is blocking the beam.
-     * PLACEHOLDER: false (LOW), typical for break-beam receivers. Verify with Flywheel Intake
-     * Test, which shows the raw HIGH/LOW reading.
+     * indexBeam1 reading (DigitalChannel.getState()) that means a ball is blocking the beam:
+     * false (LOW). Verified on the robot (2026-11-22).
      */
     public static final boolean INDEX_BEAM_BALL_STATE = false;
 
