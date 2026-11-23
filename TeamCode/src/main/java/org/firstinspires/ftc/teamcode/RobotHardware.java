@@ -69,8 +69,12 @@ public class RobotHardware {
         configureMotor(indexer, DcMotorSimple.Direction.FORWARD);
         // FLOAT lets the flywheel coast down instead of braking hard on the gearbox.
         configureMotor(flywheel, DcMotorSimple.Direction.REVERSE, DcMotor.ZeroPowerBehavior.FLOAT);
-        // setVelocity() in RUN_USING_ENCODER runs the hub's closed-loop velocity PIDF.
-        // Read the active gains once so they can be shown on the Driver Station.
+        // setVelocity() in RUN_USING_ENCODER runs the hub's closed-loop velocity PIDF. Use the
+        // gains from Launcher Tuning if enabled, then read the active gains for the Driver Station.
+        if (Constants.FLYWHEEL_USE_TUNED_PIDF) {
+            flywheel.setVelocityPIDFCoefficients(Constants.FLYWHEEL_PIDF_P,
+                    Constants.FLYWHEEL_PIDF_I, Constants.FLYWHEEL_PIDF_D, Constants.FLYWHEEL_PIDF_F);
+        }
         flywheelPidf = flywheel.getPIDFCoefficients(DcMotor.RunMode.RUN_USING_ENCODER);
 
         // Flower wedge servos are mounted opposite each other on the same mechanism, so the

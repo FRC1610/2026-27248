@@ -49,6 +49,21 @@ public final class Constants {
     public static final double FLYWHEEL_DEFAULT_RPM = 2575.0;
     public static final double FLYWHEEL_MAX_RPM = 6000.0;
     public static final double FLYWHEEL_RPM_STEP = 100.0;
+    /**
+     * Flywheel velocity PIDF gains (hub units) found with Launcher Tuning. Only applied when
+     * FLYWHEEL_USE_TUNED_PIDF is true; otherwise the hub's default gains are used.
+     */
+    public static final boolean FLYWHEEL_USE_TUNED_PIDF = true;
+    /*
+     * Tuned 2026-11-22 with Launcher Tuning at 2575 RPM: F 22.5 holds speed (~12.6 V) with no
+     * overshoot; P 30 recovers from a shot in ~0.22 s (P 10: ~0.8 s); I kept small (0.5) to trim
+     * battery-voltage drift - I 3 caused +150 RPM overshoot after shots and +770 RPM at spin-up.
+     * P 30 / I 0.5 together still needs a confirmation run (spin-up and 5+ shots).
+     */
+    public static final double FLYWHEEL_PIDF_P = 30.0;
+    public static final double FLYWHEEL_PIDF_I = 0.5;
+    public static final double FLYWHEEL_PIDF_D = 0.0;
+    public static final double FLYWHEEL_PIDF_F = 22.5;
 
     // ---- Indexer (values from the original TestMode) ----
     public static final double INDEXER_TICKS_PER_REV = 103.6;
