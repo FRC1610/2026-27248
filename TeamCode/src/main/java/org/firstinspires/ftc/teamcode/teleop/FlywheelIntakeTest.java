@@ -1,7 +1,7 @@
 package org.firstinspires.ftc.teamcode.teleop;
 
 import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
-import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
+import com.qualcomm.robotcore.eventloop.opmode.Utility;
 import com.qualcomm.robotcore.hardware.DcMotor;
 import com.qualcomm.robotcore.hardware.DcMotorEx;
 import com.qualcomm.robotcore.hardware.DigitalChannel;
@@ -18,7 +18,8 @@ import org.firstinspires.ftc.teamcode.Constants;
  * RT: intake forward, LT: intake reverse (proportional).
  * Y: flower wedge toggle between FLOWER_WEDGE_UP and FLOWER_WEDGE_DOWN (starts UP at INIT).
  */
-@TeleOp(name = "Flywheel Intake Test", group = "Test")
+@Utility(name = "Flywheel Intake Test",
+        description = "Flywheel, indexer, intake and flower wedge test (gamepad 1)")
 public class FlywheelIntakeTest extends LinearOpMode {
 
     // Intake and indexer encoder ticks per output revolution (from the original TestMode)

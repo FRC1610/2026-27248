@@ -1,7 +1,7 @@
 package org.firstinspires.ftc.teamcode.teleop;
 
 import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
-import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
+import com.qualcomm.robotcore.eventloop.opmode.Utility;
 import com.qualcomm.robotcore.hardware.DcMotor;
 import com.qualcomm.robotcore.hardware.DcMotorEx;
 
@@ -13,7 +13,7 @@ import org.firstinspires.ftc.teamcode.Constants;
  * <p>Gamepad1 (same as DriveTeleOp): left stick moves, right stick X turns,
  * left stick click toggles half speed.
  */
-@TeleOp(name = "Mecanum Drive Test", group = "Test")
+@Utility(name = "Mecanum Drive Test", description = "Robot-centric mecanum drive test")
 public class MecanumDriveTest extends LinearOpMode {
 
     private DcMotorEx leftFront;

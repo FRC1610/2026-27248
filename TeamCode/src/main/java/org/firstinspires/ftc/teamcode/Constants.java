@@ -49,6 +49,21 @@ public final class Constants {
     public static final double FLYWHEEL_DEFAULT_RPM = 2575.0;
     public static final double FLYWHEEL_MAX_RPM = 6000.0;
     public static final double FLYWHEEL_RPM_STEP = 100.0;
+    /**
+     * Flywheel velocity PIDF gains (hub units) found with Launcher Tuning. Only applied when
+     * FLYWHEEL_USE_TUNED_PIDF is true; otherwise the hub's default gains are used.
+     */
+    public static final boolean FLYWHEEL_USE_TUNED_PIDF = true;
+    /*
+     * Tuned 2026-11-22 with Launcher Tuning at 2575 RPM: F 22.5 holds speed (~12.6 V) with no
+     * overshoot; P 30 recovers from a shot in ~0.22 s (P 10: ~0.8 s); I kept small (0.5) to trim
+     * battery-voltage drift - I 3 caused +150 RPM overshoot after shots and +770 RPM at spin-up.
+     * P 30 / I 0.5 together still needs a confirmation run (spin-up and 5+ shots).
+     */
+    public static final double FLYWHEEL_PIDF_P = 30.0;
+    public static final double FLYWHEEL_PIDF_I = 0.5;
+    public static final double FLYWHEEL_PIDF_D = 0.0;
+    public static final double FLYWHEEL_PIDF_F = 22.5;
 
     // ---- Indexer (values from the original TestMode) ----
     public static final double INDEXER_TICKS_PER_REV = 103.6;
@@ -63,11 +78,31 @@ public final class Constants {
 
     // ---- Indexer beam sensor (indexBeam1) ----
     /**
-     * indexBeam1 reading (DigitalChannel.getState()) that means a ball is blocking the beam.
-     * PLACEHOLDER: false (LOW), typical for break-beam receivers. Verify with Flywheel Intake
-     * Test, which shows the raw HIGH/LOW reading.
+     * indexBeam1 reading (DigitalChannel.getState()) that means a ball is blocking the beam:
+     * false (LOW). Verified on the robot (2026-11-22).
      */
     public static final boolean INDEX_BEAM_BALL_STATE = false;
+
+    // ---- goBILDA Prism LED driver (I2C, configured as "prism") ----
+    /**
+     * Artboards saved on the Prism by Prism Light Setup (run once). Artboard 0 is the power-on
+     * default; the TeleOps only switch between these.
+     */
+    public static final int PRISM_ARTBOARD_POWER_ON = 0;      // yellow snakes (power on / idle)
+    public static final int PRISM_ARTBOARD_RED = 1;           // red snakes (red alliance)
+    public static final int PRISM_ARTBOARD_BLUE = 2;          // blue snakes (blue alliance)
+    public static final int PRISM_ARTBOARD_BALL_SPINUP = 3;   // purple snakes
+    public static final int PRISM_ARTBOARD_BALL_READY = 4;    // green snakes
+    /** LEDs in the chain (indexes 0 to PRISM_LED_COUNT - 1); every animation covers all of them. */
+    public static final int PRISM_LED_COUNT = 48;
+    /** LED brightness (0-100) for all artboards. */
+    public static final int PRISM_BRIGHTNESS = 50;
+    /** Snake speed (0-1) for all artboards. */
+    public static final float PRISM_SNAKE_SPEED = 0.3f;
+    /** LEDs between consecutive snakes on all artboards. */
+    public static final int PRISM_SNAKE_SPACING = 4;
+    /** Flywheel counts as "at speed" (green) within this many RPM of its setpoint. */
+    public static final double LIGHTS_FLYWHEEL_READY_TOLERANCE_RPM = 50.0;
 
     // ---- Driver controls ----
     public static final double TRIGGER_DEADBAND = 0.05;

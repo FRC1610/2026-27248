@@ -3,7 +3,7 @@ package org.firstinspires.ftc.teamcode.teleop;
 import com.qualcomm.hardware.gobilda.GoBildaPinpointDriver;
 import com.qualcomm.hardware.limelightvision.LLResult;
 import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
-import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
+import com.qualcomm.robotcore.eventloop.opmode.Utility;
 import com.qualcomm.robotcore.hardware.PIDFCoefficients;
 
 import org.firstinspires.ftc.robotcore.external.navigation.AngleUnit;
@@ -14,7 +14,8 @@ import org.firstinspires.ftc.teamcode.Constants;
 import org.firstinspires.ftc.teamcode.RobotHardware;
 
 /** Copy of Main 2026 with every control on gamepad 1, kept for single-driver testing. */
-@TeleOp(name = "Single Gamepad Test", group = "Test")
+@Utility(name = "Single Gamepad Test",
+        description = "Main 2026 with every control on gamepad 1")
 public class SingleGamepadTest extends LinearOpMode {
     private final RobotHardware robot = new RobotHardware();
 
@@ -36,7 +37,13 @@ public class SingleGamepadTest extends LinearOpMode {
             telemetry.addData("Limelight requested pipeline", robot.getSelectedVisionPipeline());
             telemetry.update();
 
-            waitForStart();
+            // INIT loop instead of waitForStart() so the lights (and Limelight pipeline) follow
+            // allianceButton until START.
+            while (opModeInInit()) {
+                robot.selectAllianceLimelightPipeline();
+                robot.lights.showAlliance(robot.isRedAlliance());
+                idle();
+            }
             if (isStopRequested()) return;
 
             boolean leftStickPreviouslyPressed = false;
@@ -123,6 +130,11 @@ public class SingleGamepadTest extends LinearOpMode {
                 telemetry.addData("Flywheel", flywheelOn ? "ON" : "OFF");
                 telemetry.addData("Flywheel setpoint (RPM)", "%.0f", flywheelSetpointRpm);
                 double flywheelRpm = robot.getFlywheelRpm();
+                // Lights: alliance color, or pulsing orange/green with a ball loaded.
+                robot.lights.update(robot.isRedAlliance(), robot.isBallAtIndexer(), flywheelOn,
+                        flywheelSetpointRpm, flywheelRpm);
+                telemetry.addData("Lights", robot.lights.isPresent()
+                        ? String.valueOf(robot.lights.getState()) : "no prism configured");
                 telemetry.addData("Flywheel current (RPM)", "%.0f", flywheelRpm);
                 if (flywheelOn) {
                     telemetry.addData("Flywheel error (RPM)", "%.0f",

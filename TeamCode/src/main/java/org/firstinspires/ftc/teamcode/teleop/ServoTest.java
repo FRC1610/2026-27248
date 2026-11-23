@@ -1,7 +1,7 @@
 package org.firstinspires.ftc.teamcode.teleop;
 
 import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
-import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
+import com.qualcomm.robotcore.eventloop.opmode.Utility;
 import com.qualcomm.robotcore.hardware.Servo;
 import com.qualcomm.robotcore.hardware.ServoImplEx;
 
@@ -18,7 +18,7 @@ import org.firstinspires.ftc.teamcode.RobotHardware;
  * <p>Gamepad1: A toggles the wedge between up and down; d-pad up/down fine-tunes the wedge
  * setpoint by +/-0.05 per press; d-pad right/left changes the turret setpoint by +/-0.05 per press.
  */
-@TeleOp(name = "ServoTest", group = "Test")
+@Utility(name = "ServoTest", description = "Flower wedge up/down and turret servo test")
 public class ServoTest extends LinearOpMode {
 
     private static final double STEP = 0.05;

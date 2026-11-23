@@ -20,6 +20,8 @@ import org.firstinspires.ftc.robotcore.external.navigation.Pose2D;
 /** Drive configuration carried over from 2025-27248 RobotHardware and PedroConstants. */
 public class RobotHardware {
     public GoBildaPinpointDriver pinpoint;
+    /** goBILDA Prism status lights (does nothing if "prism" isn't configured). */
+    public RobotLights lights;
     private Limelight3A limelight;
     private LLResult latestLimelightResult;
     private int selectedVisionPipeline = -1;
@@ -67,8 +69,12 @@ public class RobotHardware {
         configureMotor(indexer, DcMotorSimple.Direction.FORWARD);
         // FLOAT lets the flywheel coast down instead of braking hard on the gearbox.
         configureMotor(flywheel, DcMotorSimple.Direction.REVERSE, DcMotor.ZeroPowerBehavior.FLOAT);
-        // setVelocity() in RUN_USING_ENCODER runs the hub's closed-loop velocity PIDF.
-        // Read the active gains once so they can be shown on the Driver Station.
+        // setVelocity() in RUN_USING_ENCODER runs the hub's closed-loop velocity PIDF. Use the
+        // gains from Launcher Tuning if enabled, then read the active gains for the Driver Station.
+        if (Constants.FLYWHEEL_USE_TUNED_PIDF) {
+            flywheel.setVelocityPIDFCoefficients(Constants.FLYWHEEL_PIDF_P,
+                    Constants.FLYWHEEL_PIDF_I, Constants.FLYWHEEL_PIDF_D, Constants.FLYWHEEL_PIDF_F);
+        }
         flywheelPidf = flywheel.getPIDFCoefficients(DcMotor.RunMode.RUN_USING_ENCODER);
 
         // Flower wedge servos are mounted opposite each other on the same mechanism, so the
@@ -87,6 +93,10 @@ public class RobotHardware {
 
         indexBeam1 = hardwareMap.get(DigitalChannel.class, "indexBeam1");
         indexBeam1.setMode(DigitalChannel.Mode.INPUT);
+
+        // Status lights: yellow from power-on until here, then the alliance color.
+        lights = new RobotLights(hardwareMap);
+        lights.showAlliance(isRedAlliance());
 
         pinpoint = hardwareMap.get(GoBildaPinpointDriver.class, "pinpoint");
         pinpoint.setOffsets(Constants.FORWARD_POD_Y, Constants.STRAFE_POD_X, DistanceUnit.INCH);
@@ -266,7 +276,7 @@ public class RobotHardware {
         return !allianceButton.getState();
     }
 
-    /** Raw digital state of indexBeam1 (true = HIGH). Which state means "beam broken" is not yet confirmed. */
+    /** Raw digital state of indexBeam1 (true = HIGH). LOW means a ball is blocking the beam. */
     public boolean getIndexBeam1State() {
         return indexBeam1.getState();
     }
@@ -356,5 +366,7 @@ public class RobotHardware {
         if (flowerWedgeLeft != null) flowerWedgeLeft.setPwmDisable();
         if (flowerWedgeRight != null) flowerWedgeRight.setPwmDisable();
         if (turret != null) turret.setPwmDisable();
+        // Flywheel is off now: back to the yellow idle lights (don't leave snakes showing).
+        if (lights != null) lights.show(RobotLights.State.YELLOW_IDLE);
     }
 }

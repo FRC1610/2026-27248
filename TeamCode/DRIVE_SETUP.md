@@ -61,9 +61,32 @@ Pinpoint driver is used, with no additional libraries required.
 
 Motor powers are normalized to [-1, 1], and all drive motors stop when the
 OpMode exits or Pinpoint is not ready with a finite heading.
-This OpMode requires no launcher, intake, turret, or lighting hardware.
 Wiring, wheel directions, pod tracking, and
 field-centric controls still require verification on the physical robot.
+
+## goBILDA Prism status lights
+
+The Prism RGB LED driver connects to an I2C port. In **Configure Robot**, add it on that
+port's I2C bus as **goBILDA® Prism RGB LED Driver** named `prism`. The driver and
+**Prism Configurator** come from goBILDA's
+[FtcRobotController-Add-Prism](https://github.com/goBILDA-Official/FtcRobotController-Add-Prism/tree/Add-Prism/TeamCode/src/main/java/org/firstinspires/ftc/teamcode)
+(`TeamCode/.../Prism/`, `GoBildaPrismConfigurator.java`).
+
+Run **Prism Light Setup** (Test group) once and press A: it sets the strip length to 48 LEDs,
+saves these Artboards to the Prism and makes Artboard 0 play at power-on. They persist across
+power cycles. All animations are snakes (speed 0.3, 4 LEDs apart) at 50% brightness on
+LEDs 0-47.
+
+| Artboard | Lights | When |
+| --- | --- | --- |
+| 0 | Yellow snakes | Power on (played by the Prism itself); during the match with no ball loaded and the flywheel off |
+| 1 / 2 | Red / blue snakes | During INIT, from `allianceButton`; during the match with no ball loaded and the flywheel running |
+| 3 | Purple snakes | Ball at the indexer beam, flywheel off or not within 50 RPM of its setpoint |
+| 4 | Green snakes | Ball at the indexer beam and flywheel within 50 RPM of its setpoint |
+
+Main 2026 and Single Gamepad Test only switch Artboards when the state changes. Saving an
+Artboard 0-4 with the Prism Configurator overwrites these; rerun Prism Light Setup to restore
+them. Without a `prism` in the configuration, the lights code does nothing.
 
 ## Limelight 3A
 
