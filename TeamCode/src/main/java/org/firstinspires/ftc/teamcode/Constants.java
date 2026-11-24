@@ -16,11 +16,12 @@ public final class Constants {
      */
     public static final double DRIVE_RAMP_UP_SECONDS = 0.4;
 
-    // ---- Starting heading: robot front faces the drivers' RIGHT at INIT (both alliances) ----
-    // Robot heading at INIT in the drivers' frame (CCW+, 0 = away from drivers), so right = -90.
-    // Added to the Pinpoint heading in Main 2026 until a Back/Share heading reset.
-    public static final double BLUE_START_HEADING_OFFSET_RAD = -Math.PI / 2.0;
-    public static final double RED_START_HEADING_OFFSET_RAD = -Math.PI / 2.0;
+    // ---- Starting heading: robot front faces the drivers' LEFT at INIT (both alliances), ----
+    // ---- with the back of the robot against the wall.                                    ----
+    // Robot heading at INIT in the drivers' frame (CCW+, 0 = away from drivers), so left = +90.
+    // Always added to the Pinpoint heading in Main 2026 (gamepad1 START re-zeroes the Pinpoint).
+    public static final double BLUE_START_HEADING_OFFSET_RAD = Math.PI / 2.0;
+    public static final double RED_START_HEADING_OFFSET_RAD = Math.PI / 2.0;
 
     // ---- Pinpoint odometry: forward pod's sideways offset and strafe pod's forward offset (in) ----
     public static final double FORWARD_POD_Y = -3.375;

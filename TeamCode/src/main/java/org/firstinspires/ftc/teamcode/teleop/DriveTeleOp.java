@@ -44,17 +44,18 @@ public class DriveTeleOp extends LinearOpMode {
             boolean wedgeUp = true;
             robot.setFlowerWedgePosition(Constants.FLOWER_WEDGE_UP);
             // Turret starts at the hold position (facing forward; moves when INIT is pressed).
-            // While tracking is on (gamepad2 B), TurretTracker aims it; otherwise it holds the
+            // While tracking is on (gamepad2 X), TurretTracker aims it; otherwise it holds the
             // hold position. Commands are clipped to TURRET_MIN/MAX_POSITION.
             robot.setTurretPosition(Constants.TURRET_HOLD_POSITION);
             TurretTracker turretTracker = new TurretTracker(Constants.TURRET_HOLD_POSITION);
             telemetry.addLine("Keep robot stationary while Pinpoint calibrates.");
             telemetry.addLine("Left stick: move; right stick X: turn; left stick click: half speed.");
-            telemetry.addLine("Robot must start with its front facing the drivers' RIGHT"
-                    + " (-90 deg start offset).");
-            telemetry.addLine("GP1 (driver): Back/Share makes current facing 'forward' (no offset).");
-            telemetry.addLine("GP2: X flywheel on/off, dpad up/down RPM +/-100.");
-            telemetry.addLine("GP2: B turret tracking on/off.");
+            telemetry.addLine("Robot must start with its BACK against the wall, front facing the"
+                    + " drivers' LEFT (+90 deg start offset).");
+            telemetry.addLine("GP1 (driver): START resets heading - line the robot up as at the"
+                    + " match start first.");
+            telemetry.addLine("GP2: B flywheel on/off, dpad up/down RPM +/-100.");
+            telemetry.addLine("GP2: X turret tracking on/off.");
             telemetry.addLine("GP2: hold A = SHOOT (one ball at a time, flywheel must be on).");
             telemetry.addLine("GP2: RT intake (indexer loads a ball to the beam), LT reverse.");
             telemetry.addLine("GP2: dpad right/left indexer +/-5%; Y wedge up/down.");
@@ -77,10 +78,7 @@ public class DriveTeleOp extends LinearOpMode {
             if (isStopRequested()) return;
 
             boolean leftStickPreviouslyPressed = false;
-            boolean backPreviouslyPressed = false;
-            // Start heading offset (-90 deg, front facing drivers' right) applies until the
-            // driver resets the heading.
-            boolean startHeadingOffsetActive = true;
+            boolean startPreviouslyPressed = false;
             double speed = Constants.DRIVE_FULL_SPEED;
             boolean xPreviouslyPressed = false;
             boolean bPreviouslyPressed = false;
@@ -141,21 +139,22 @@ public class DriveTeleOp extends LinearOpMode {
                 }
                 leftStickPreviouslyPressed = gamepad1.left_stick_button;
 
-                // Heading reset (gamepad1): Back/Share makes the current facing field-centric
-                // "forward" (the start offset is dropped). X/Y are kept. Takes effect from the next
+                // Heading reset (gamepad1 START), for when the odometry heading is wrong: the
+                // driver lines the robot up as at the match start (back against the wall, front
+                // facing the drivers' left), then presses START. The Pinpoint heading is zeroed, so the start offset
+                // applies again exactly as at INIT. X/Y are kept. Takes effect from the next
                 // Pinpoint update.
-                if (gamepad1.back && !backPreviouslyPressed) {
+                if (gamepad1.start && !startPreviouslyPressed) {
                     robot.resetHeading();
-                    startHeadingOffsetActive = false;
                     turretTracker.resetHeadingReference(); // the jump is not a robot turn
                     pose = new Pose2D(DistanceUnit.INCH, pose.getX(DistanceUnit.INCH),
                             pose.getY(DistanceUnit.INCH), AngleUnit.RADIANS, 0);
                 }
-                backPreviouslyPressed = gamepad1.back;
+                startPreviouslyPressed = gamepad1.start;
 
-                // Field-centric heading = Pinpoint heading + start offset (until reset).
+                // Field-centric heading = Pinpoint heading + start offset.
                 double heading = pose.getHeading(AngleUnit.RADIANS)
-                        + (startHeadingOffsetActive ? robot.getHeadingOffsetRadians() : 0);
+                        + robot.getHeadingOffsetRadians();
                 boolean headingValid =
                         robot.pinpoint.getDeviceStatus() == GoBildaPinpointDriver.DeviceStatus.READY
                                 && !Double.isNaN(heading) && !Double.isInfinite(heading);
@@ -167,18 +166,18 @@ public class DriveTeleOp extends LinearOpMode {
                     telemetry.addLine("Drive stopped: Pinpoint must be ready with a valid heading.");
                 }
 
-                // Flywheel and turret tracking on/off (gamepad2): X toggles the flywheel, B toggles
+                // Flywheel and turret tracking on/off (gamepad2): B toggles the flywheel, X toggles
                 // tracking. A ball at the indexer beam does not turn either on. Turning the
                 // flywheel off also stops the indexer: the shoot command is cancelled until A is
                 // released.
                 boolean ballPresent = robot.isBallAtIndexer();
-                if (gamepad2.x && !xPreviouslyPressed) {
+                if (gamepad2.b && !bPreviouslyPressed) {
                     flywheelOn = !flywheelOn;
                     if (!flywheelOn) shootCancelled = true;
                 }
-                xPreviouslyPressed = gamepad2.x;
-                if (gamepad2.b && !bPreviouslyPressed) turretTrackingOn = !turretTrackingOn;
                 bPreviouslyPressed = gamepad2.b;
+                if (gamepad2.x && !xPreviouslyPressed) turretTrackingOn = !turretTrackingOn;
+                xPreviouslyPressed = gamepad2.x;
                 boolean turretAiming = turretTrackingOn;
 
                 // Flywheel setpoint (gamepad2): d-pad up/down adjusts by 100 RPM. Commanded before
@@ -369,7 +368,7 @@ public class DriveTeleOp extends LinearOpMode {
                             + " reverse/push tries failed. Release A to retry, or hold LB to reverse.");
                 }
                 if (shootHeld && !flywheelOn) {
-                    telemetry.addLine("SHOOT ignored: flywheel is off (GP2 X).");
+                    telemetry.addLine("SHOOT ignored: flywheel is off (GP2 B).");
                 }
                 if (emergency) {
                     telemetry.addData("EMERGENCY", "intake + indexer full %s",
@@ -378,7 +377,7 @@ public class DriveTeleOp extends LinearOpMode {
                 telemetry.addData("Ball at indexer", "%s (indexBeam1 %s)",
                         ballPresent ? "YES" : "no", robot.getIndexBeam1State() ? "HIGH" : "LOW");
                 // Flywheel/indexer RPMs are sent as plain numbers so Panels can graph them.
-                // "Setpoint" is the commanded RPM (0 when off); "selected" is what X turns on.
+                // "Setpoint" is the commanded RPM (0 when off); "selected" is what B turns on.
                 // Lights: alliance color, or purple/green snakes with a ball loaded.
                 robot.lights.update(robot.isRedAlliance(), ballPresent, flywheelOn,
                         flywheelSetpointRpm, flywheelRpm);
@@ -424,10 +423,9 @@ public class DriveTeleOp extends LinearOpMode {
                 telemetry.addData("Pinpoint status", robot.pinpoint.getDeviceStatus());
                 telemetry.addData("X (in)", "%.3f", pose.getX(DistanceUnit.INCH));
                 telemetry.addData("Y (in)", "%.3f", pose.getY(DistanceUnit.INCH));
-                telemetry.addData("Heading (deg)", "Pinpoint %.1f, drive %.1f%s",
+                telemetry.addData("Heading (deg)", "Pinpoint %.1f, drive %.1f",
                         pose.getHeading(AngleUnit.DEGREES),
-                        AngleUnit.normalizeDegrees(Math.toDegrees(heading)),
-                        startHeadingOffsetActive ? " (start offset)" : "");
+                        AngleUnit.normalizeDegrees(Math.toDegrees(heading)));
                 telemetry.addData("Turret", "%s, pos %.3f",
                         turretAiming ? "TRACKING ON - " + turretTracker.getState()
                                 : "TRACKING OFF (hold)",

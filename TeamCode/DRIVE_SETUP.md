@@ -2,8 +2,11 @@
 
 Select **Main 2026** on the Driver Station. Gamepad 1 (driver) left stick controls
 field-centric translation; right stick X controls rotation. Click the left stick
-to toggle between full and half speed. Press **Back/Share** to make the robot's
-current facing the new field-centric forward (X/Y are kept).
+to toggle between full and half speed. If the odometry heading goes wrong, line the
+robot up as at the match start (back against the wall, front facing the drivers' left)
+and press **Start**:
+the Pinpoint heading is zeroed and the start offset applies again, as at INIT (X/Y are
+kept). Back/Share is not used.
 
 Gamepad 2 (operator) runs the mechanisms:
 
@@ -12,8 +15,8 @@ Gamepad 2 (operator) runs the mechanisms:
 | RT / LT | Intake forward / reverse (proportional). RT also runs the indexer until a ball reaches the beam |
 | Hold A | **Shoot**: feed one ball at a time (flywheel must be on) |
 | D-pad right / left | Indexer feed speed +/-5% (default 70%; loading stays at 40%) |
-| X | Flywheel on/off (off also cancels shoot until A is released) |
-| B | Turret tracking on/off |
+| B | Flywheel on/off (off also cancels shoot until A is released) |
+| X | Turret tracking on/off |
 | D-pad up / down | Flywheel setpoint +/-100 RPM |
 | Y | Flower wedge up/down |
 | Hold RB / LB | **Emergency**: intake and indexer full forward / reverse |
@@ -61,9 +64,10 @@ The forward pod sideways offset is **-3.375 inches**; the strafe pod forward
 offset is **5.5625 inches**. These are passed to `setOffsets` in that order.
 
 Initialization resets position and calibrates the Pinpoint IMU: keep the robot
-stationary. Start with the same sideways orientation as last year: blue robot
-front points right, red robot front points left relative to the drivers. The
-alliance input applies +90 degrees for blue or -90 degrees for red.
+stationary. On both alliances, start with the back of the robot against the wall and
+its front facing the drivers' left: `BLUE_START_HEADING_OFFSET_RAD` and
+`RED_START_HEADING_OFFSET_RAD` are both +90 degrees and are added to the Pinpoint
+heading for field-centric driving.
 
 Configuration and drive math were reviewed against `RobotHardware.java`,
 `Competition.java`, `Testing/FieldCentricDriveTest.java`, and
