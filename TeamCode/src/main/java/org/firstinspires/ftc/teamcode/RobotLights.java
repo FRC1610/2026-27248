@@ -12,17 +12,18 @@ import org.firstinspires.ftc.teamcode.Prism.PrismAnimations;
  * <p>The Artboards are saved on the Prism once by Prism Light Setup (see {@link #saveArtboards});
  * during a match this class only switches between them, and only sends an I2C write when the
  * state changes. If no "prism" is in the robot configuration, every call does nothing.
- * All animations are snakes (PRISM_SNAKE_SPEED, PRISM_SNAKE_SPACING apart) at PRISM_BRIGHTNESS
- * on LEDs 0 to PRISM_LED_COUNT - 1.
+ * The snake animations run at PRISM_SNAKE_SPEED, PRISM_SNAKE_SPACING apart, at PRISM_BRIGHTNESS;
+ * the police lights run at PRISM_SHOOTING_BRIGHTNESS. All cover LEDs 0 to PRISM_LED_COUNT - 1.
  *
  * <ul>
  *   <li>YELLOW_IDLE: yellow snakes - power-on (Artboard 0, played by the Prism itself), and
  *       during the match whenever no ball is loaded and the flywheel is off
- *   <li>ALLIANCE_RED / ALLIANCE_BLUE: red / blue snakes (from allianceButton) during INIT,
+ *   <li>ALLIANCE_RED / ALLIANCE_BLUE: red / blue snakes (from allianceToggle) during INIT,
  *       and during the match with no ball loaded while the flywheel is running
  *   <li>BALL_SPINUP: purple snakes - ball loaded, flywheel off or not within
  *       LIGHTS_FLYWHEEL_READY_TOLERANCE_RPM of its setpoint
  *   <li>BALL_READY: green snakes - ball loaded and flywheel at speed
+ *   <li>SHOOTING: police lights - while the shoot command runs (overrides the others)
  * </ul>
  */
 public class RobotLights {
@@ -31,7 +32,8 @@ public class RobotLights {
         ALLIANCE_RED(Constants.PRISM_ARTBOARD_RED),
         ALLIANCE_BLUE(Constants.PRISM_ARTBOARD_BLUE),
         BALL_SPINUP(Constants.PRISM_ARTBOARD_BALL_SPINUP),
-        BALL_READY(Constants.PRISM_ARTBOARD_BALL_READY);
+        BALL_READY(Constants.PRISM_ARTBOARD_BALL_READY),
+        SHOOTING(Constants.PRISM_ARTBOARD_SHOOTING);
 
         public final int artboard;
 
@@ -64,7 +66,7 @@ public class RobotLights {
         current = state;
     }
 
-    /** Alliance color from allianceButton (used during INIT). */
+    /** Alliance color from allianceToggle (used during INIT). */
     public void showAlliance(boolean redAlliance) {
         show(redAlliance ? State.ALLIANCE_RED : State.ALLIANCE_BLUE);
     }
@@ -72,15 +74,18 @@ public class RobotLights {
     /**
      * Match-time lights:
      * <ul>
+     *   <li>shoot command running: police lights
      *   <li>ball loaded: green snakes if the flywheel is on and within
      *       LIGHTS_FLYWHEEL_READY_TOLERANCE_RPM of its setpoint, otherwise purple snakes
      *   <li>no ball, flywheel running: alliance color
      *   <li>no ball, flywheel off: yellow
      * </ul>
      */
-    public void update(boolean redAlliance, boolean ballLoaded, boolean flywheelOn,
-                       double flywheelSetpointRpm, double flywheelActualRpm) {
-        if (ballLoaded) {
+    public void update(boolean redAlliance, boolean shooting, boolean ballLoaded,
+                       boolean flywheelOn, double flywheelSetpointRpm, double flywheelActualRpm) {
+        if (shooting) {
+            show(State.SHOOTING);
+        } else if (ballLoaded) {
             show(isFlywheelAtSpeed(flywheelOn, flywheelSetpointRpm, flywheelActualRpm)
                     ? State.BALL_READY : State.BALL_SPINUP);
         } else if (flywheelOn) {
@@ -97,7 +102,7 @@ public class RobotLights {
     }
 
     /**
-     * Writes the five Artboards to the Prism's memory, sets the strip length to PRISM_LED_COUNT
+     * Writes the six Artboards to the Prism's memory, sets the strip length to PRISM_LED_COUNT
      * and makes Artboard 0 (yellow) the power-on default. Run once (Prism Light Setup); the Prism
      * keeps them across power cycles.
      */
@@ -110,6 +115,9 @@ public class RobotLights {
         saveSnakes(prism, Constants.PRISM_ARTBOARD_BLUE, Color.BLUE);
         saveSnakes(prism, Constants.PRISM_ARTBOARD_BALL_SPINUP, Color.PURPLE);
         saveSnakes(prism, Constants.PRISM_ARTBOARD_BALL_READY, Color.GREEN);
+        PrismAnimations.PoliceLights police = new PrismAnimations.PoliceLights();
+        save(prism, Constants.PRISM_ARTBOARD_SHOOTING, police,
+                Constants.PRISM_SHOOTING_BRIGHTNESS);
 
         GoBildaPrismDriver.Artboard powerOn = artboard(Constants.PRISM_ARTBOARD_POWER_ON);
         prism.setDefaultBootArtboard(powerOn);
@@ -128,13 +136,14 @@ public class RobotLights {
         snakes.setBackgroundColor(Color.TRANSPARENT);
         snakes.setSpacingBetween(Constants.PRISM_SNAKE_SPACING);
         snakes.setSpeed(Constants.PRISM_SNAKE_SPEED);
-        save(prism, artboard, snakes);
+        save(prism, artboard, snakes, Constants.PRISM_BRIGHTNESS);
     }
 
-    /** Applies the shared brightness and LED range, then saves the animation to an Artboard. */
+    /** Applies the brightness and shared LED range, then saves the animation to an Artboard. */
     private static void save(GoBildaPrismDriver prism, int artboard,
-                             PrismAnimations.AnimationBase animation) throws InterruptedException {
-        animation.setBrightness(Constants.PRISM_BRIGHTNESS);
+                             PrismAnimations.AnimationBase animation, int brightness)
+            throws InterruptedException {
+        animation.setBrightness(brightness);
         animation.setStartIndex(0);
         animation.setStopIndex(Constants.PRISM_LED_COUNT - 1);
 

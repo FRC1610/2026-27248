@@ -34,7 +34,7 @@ public final class Constants {
     public static final int PIPELINE_BLUE_SCORING_SIDE = 3;
     public static final int PIPELINE_ALL_RED_TAGS = 8;
     public static final int PIPELINE_ALL_BLUE_TAGS = 9;
-    /** Default pipeline for each alliance, chosen from allianceButton (low = red, high = blue). */
+    /** Default pipeline for each alliance, chosen from allianceToggle (low = red, high = blue). */
     public static final int RED_VISION_PIPELINE = PIPELINE_ALL_RED_TAGS;
     public static final int BLUE_VISION_PIPELINE = PIPELINE_ALL_BLUE_TAGS;
     public static final int LIMELIGHT_POLL_RATE_HZ = 100;
@@ -134,16 +134,43 @@ public final class Constants {
     public static final int PRISM_ARTBOARD_BLUE = 2;          // blue snakes (blue alliance)
     public static final int PRISM_ARTBOARD_BALL_SPINUP = 3;   // purple snakes
     public static final int PRISM_ARTBOARD_BALL_READY = 4;    // green snakes
+    public static final int PRISM_ARTBOARD_SHOOTING = 5;      // police lights (shoot command)
     /** LEDs in the chain (indexes 0 to PRISM_LED_COUNT - 1); every animation covers all of them. */
     public static final int PRISM_LED_COUNT = 48;
-    /** LED brightness (0-100) for all artboards. */
+    /** LED brightness (0-100) for the snake artboards. */
     public static final int PRISM_BRIGHTNESS = 50;
+    /** LED brightness (0-100) for the police lights shown while the shoot command runs. */
+    public static final int PRISM_SHOOTING_BRIGHTNESS = 50;
     /** Snake speed (0-1) for all artboards. */
     public static final float PRISM_SNAKE_SPEED = 0.3f;
     /** LEDs between consecutive snakes on all artboards. */
     public static final int PRISM_SNAKE_SPACING = 4;
     /** Flywheel counts as "at speed" (green) within this many RPM of its setpoint. */
     public static final double LIGHTS_FLYWHEEL_READY_TOLERANCE_RPM = 50.0;
+
+    // ---- Heading backup: Control Hub IMU ("imu") when the Pinpoint fails (HeadingFusion) ----
+    /**
+     * Control Hub mounting: logo facing the robot's LEFT, USB ports UP, then leaned back this many
+     * degrees: top (USB) tipped in toward the robot's center, bottom tipped out to the left, so
+     * the logo face tilts upward (rotation about the robot's forward axis).
+     * Check: on a level robot, Panels "IMU pitch/roll" should both read about 0.
+     */
+    public static final double CONTROL_HUB_LEAN_BACK_DEG = 15.0;
+    /**
+     * false = ignore the IMU: Pinpoint only, and robot-centric driving if it fails. Use this if
+     * the IMU heading turns out wrong (e.g. mounting not as described above).
+     */
+    public static final boolean HEADING_IMU_BACKUP_ENABLED = true;
+    /** Pinpoint heading more than this far (deg) from the IMU's = Pinpoint reset or glitch. */
+    public static final double HEADING_JUMP_DEG = 15.0;
+    /** A distrusted Pinpoint must agree with the IMU within this (deg)... */
+    public static final double HEADING_AGREE_DEG = 3.0;
+    /** ...for this many loops in a row before it is used again. */
+    public static final int PINPOINT_RETRUST_LOOPS = 25;
+
+    // ---- Start position toggle (startPositionToggle digital input) ----
+    /** startPositionToggle reading (getState()) that means the Audience start: true (HIGH). */
+    public static final boolean START_POSITION_AUDIENCE_STATE = true;
 
     // ---- Driver controls ----
     public static final double TRIGGER_DEADBAND = 0.05;

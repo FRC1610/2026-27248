@@ -1,8 +1,7 @@
 package org.firstinspires.ftc.teamcode.teleop;
 
-import com.bylazar.telemetry.JoinedTelemetry;
 import com.bylazar.telemetry.PanelsTelemetry;
-import com.qualcomm.hardware.gobilda.GoBildaPinpointDriver;
+import com.bylazar.telemetry.TelemetryManager;
 import com.qualcomm.hardware.limelightvision.LLResult;
 import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
 import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
@@ -13,9 +12,9 @@ import com.qualcomm.robotcore.util.ElapsedTime;
 import org.firstinspires.ftc.robotcore.external.navigation.AngleUnit;
 import org.firstinspires.ftc.robotcore.external.navigation.DistanceUnit;
 import org.firstinspires.ftc.robotcore.external.navigation.Pose2D;
-import org.firstinspires.ftc.robotcore.external.navigation.Pose3D;
 import org.firstinspires.ftc.robotcore.internal.system.AppUtil;
 import org.firstinspires.ftc.teamcode.Constants;
+import org.firstinspires.ftc.teamcode.HeadingFusion;
 import org.firstinspires.ftc.teamcode.RobotHardware;
 import org.firstinspires.ftc.teamcode.ShootSequence;
 import org.firstinspires.ftc.teamcode.TurretTracker;
@@ -34,8 +33,9 @@ public class DriveTeleOp extends LinearOpMode {
 
     @Override
     public void runOpMode() {
-        // Send all telemetry to both the Driver Station and Panels (http://192.168.43.1:8001).
-        telemetry = new JoinedTelemetry(PanelsTelemetry.INSTANCE.getFtcTelemetry(), telemetry);
+        // Driver Station: short status only (telemetry). Panels (http://192.168.43.1:8001):
+        // full detail and graphs (panels).
+        TelemetryManager panels = PanelsTelemetry.INSTANCE.getTelemetry();
         BufferedWriter log = null;
         try {
             robot.init(hardwareMap);
@@ -48,31 +48,14 @@ public class DriveTeleOp extends LinearOpMode {
             // hold position. Commands are clipped to TURRET_MIN/MAX_POSITION.
             robot.setTurretPosition(Constants.TURRET_HOLD_POSITION);
             TurretTracker turretTracker = new TurretTracker(Constants.TURRET_HOLD_POSITION);
-            telemetry.addLine("Keep robot stationary while Pinpoint calibrates.");
-            telemetry.addLine("Left stick: move; right stick X: turn; left stick click: half speed.");
-            telemetry.addLine("Robot must start with its BACK against the wall, front facing the"
-                    + " drivers' LEFT (+90 deg start offset).");
-            telemetry.addLine("GP1 (driver): START resets heading - line the robot up as at the"
-                    + " match start first.");
-            telemetry.addLine("GP2: B flywheel on/off, dpad up/down RPM +/-100.");
-            telemetry.addLine("GP2: X turret tracking on/off.");
-            telemetry.addLine("GP2: hold A = SHOOT (one ball at a time, flywheel must be on).");
-            telemetry.addLine("GP2: RT intake (indexer loads a ball to the beam), LT reverse.");
-            telemetry.addLine("GP2: dpad right/left indexer +/-5%; Y wedge up/down.");
-            telemetry.addLine("GP2: hold RB/LB = EMERGENCY intake+indexer full fwd/rev.");
-            telemetry.addLine("Stuck-ball recovery (reverse to beam, push 100%) is "
-                    + (Constants.INDEXER_STUCK_RECOVERY_ENABLED ? "ON." : "OFF."));
-            telemetry.addLine("GP2: right stick X = manual turret while tracking is on.");
-            telemetry.addLine("Turret tracking starts "
-                    + (Constants.TURRET_TRACKING_ON_AT_START ? "ON." : "OFF (turret at start)."));
-            telemetry.addData("Limelight requested pipeline", robot.getSelectedVisionPipeline());
-            telemetry.update();
 
-            // INIT loop instead of waitForStart() so the lights (and Limelight pipeline) follow
-            // allianceButton until START.
+            // INIT loop instead of waitForStart() so the lights, Limelight pipeline and the
+            // telemetry follow allianceToggle and startPositionToggle until START.
             while (opModeInInit()) {
                 robot.selectAllianceLimelightPipeline();
                 robot.lights.showAlliance(robot.isRedAlliance());
+                addInitTelemetry();
+                telemetry.update();
                 idle();
             }
             if (isStopRequested()) return;
@@ -110,7 +93,8 @@ public class DriveTeleOp extends LinearOpMode {
                 log.write("t_s,loop_ms,beam_blocked,ball_pending,flywheel_on,setpoint_rpm,"
                         + "actual_rpm,flywheel_ready,shots,shoot_held,shoot_state,indexer_status,"
                         + "indexer_cmd,indexer_rpm,unjams,unjams_this_ball,intake_power,"
-                        + "battery_v\n");
+                        + "battery_v,heading_source,pinpoint_ok,pinpoint_deg,imu_deg,"
+                        + "drive_heading_deg\n");
                 logPath = file.getAbsolutePath();
             } catch (IOException e) {
                 log = null;
@@ -119,6 +103,9 @@ public class DriveTeleOp extends LinearOpMode {
             double volts = battery.getVoltage();
             double lastFlushSec = 0;
             long loops = 0;
+            // Heading: Pinpoint, with the Control Hub IMU as backup. Both were zeroed at INIT.
+            HeadingFusion headingFusion = new HeadingFusion();
+            headingFusion.reset(0, 0);
 
             ElapsedTime loopTimer = new ElapsedTime();
             double lastLoopSec = loopTimer.seconds();
@@ -130,8 +117,9 @@ public class DriveTeleOp extends LinearOpMode {
                 if (loops % 25 == 0) volts = battery.getVoltage();
                 robot.selectAllianceLimelightPipeline();
                 robot.refreshLimelightResult();
-                robot.pinpoint.update();
+                boolean pinpointRead = robot.updatePinpoint();
                 Pose2D pose = robot.pinpoint.getPosition();
+                double imuYaw = robot.readImuYawRadians();
 
                 if (gamepad1.left_stick_button && !leftStickPreviouslyPressed) {
                     speed = speed == Constants.DRIVE_FULL_SPEED
@@ -139,31 +127,38 @@ public class DriveTeleOp extends LinearOpMode {
                 }
                 leftStickPreviouslyPressed = gamepad1.left_stick_button;
 
-                // Heading reset (gamepad1 START), for when the odometry heading is wrong: the
-                // driver lines the robot up as at the match start (back against the wall, front
-                // facing the drivers' left), then presses START. The Pinpoint heading is zeroed, so the start offset
-                // applies again exactly as at INIT. X/Y are kept. Takes effect from the next
-                // Pinpoint update.
+                // Heading reset (gamepad1 START), for when the heading is wrong: the driver lines
+                // the robot up as at the match start (back against the wall, front facing the
+                // drivers' left), then presses START. The heading becomes 0 (Pinpoint zeroed, IMU
+                // backup re-aligned), so the start offset applies again exactly as at INIT. Works
+                // on the IMU alone if the Pinpoint is down. X/Y are kept.
                 if (gamepad1.start && !startPreviouslyPressed) {
                     robot.resetHeading();
+                    headingFusion.reset(0, imuYaw);
                     turretTracker.resetHeadingReference(); // the jump is not a robot turn
                     pose = new Pose2D(DistanceUnit.INCH, pose.getX(DistanceUnit.INCH),
                             pose.getY(DistanceUnit.INCH), AngleUnit.RADIANS, 0);
                 }
                 startPreviouslyPressed = gamepad1.start;
 
-                // Field-centric heading = Pinpoint heading + start offset.
-                double heading = pose.getHeading(AngleUnit.RADIANS)
-                        + robot.getHeadingOffsetRadians();
-                boolean headingValid =
-                        robot.pinpoint.getDeviceStatus() == GoBildaPinpointDriver.DeviceStatus.READY
-                                && !Double.isNaN(heading) && !Double.isInfinite(heading);
-                if (headingValid) {
-                    robot.fieldCentricDrive(gamepad1.left_stick_x, -gamepad1.left_stick_y,
-                            gamepad1.right_stick_x, heading, speed);
-                } else {
-                    robot.stopDrive();
-                    telemetry.addLine("Drive stopped: Pinpoint must be ready with a valid heading.");
+                // Field-centric heading = (Pinpoint, or IMU backup) heading + start offset. If the
+                // Pinpoint resets or glitches, HeadingFusion asks for its heading to be corrected.
+                // With no heading at all, drive robot-centric instead of stopping.
+                boolean pinpointOk = pinpointRead && robot.isPinpointReady();
+                double pinpointHeading = pose.getHeading(AngleUnit.RADIANS);
+                double fusedHeading = headingFusion.update(pinpointOk, pinpointHeading, imuYaw);
+                double realignHeading = headingFusion.takeRealignRequest();
+                if (!Double.isNaN(realignHeading)) robot.setPinpointHeading(realignHeading);
+                HeadingFusion.Source headingSource = headingFusion.getSource();
+                boolean headingValid = !Double.isNaN(fusedHeading);
+                double heading = headingValid
+                        ? fusedHeading + robot.getHeadingOffsetRadians() : Double.NaN;
+                robot.fieldCentricDrive(gamepad1.left_stick_x, -gamepad1.left_stick_y,
+                        gamepad1.right_stick_x, headingValid ? heading : 0, speed);
+                if (headingSource == HeadingFusion.Source.IMU) {
+                    telemetry.addLine("!! Pinpoint lost - using IMU");
+                } else if (headingSource == HeadingFusion.Source.NONE) {
+                    telemetry.addLine("!! NO HEADING - robot-centric");
                 }
 
                 // Flywheel and turret tracking on/off (gamepad2): B toggles the flywheel, X toggles
@@ -343,7 +338,7 @@ public class DriveTeleOp extends LinearOpMode {
                     try {
                         log.write(String.format(Locale.US,
                                 "%.4f,%.2f,%d,%d,%d,%.0f,%.1f,%d,%d,%d,%s,%s,%.2f,%.1f,%d,%d,%.2f,"
-                                        + "%.2f\n",
+                                        + "%.2f",
                                 nowSec, dtSec * 1000.0, ballPresent ? 1 : 0,
                                 shootSequence.isBallPending() ? 1 : 0, flywheelOn ? 1 : 0,
                                 flywheelOn ? flywheelSetpointRpm : 0, flywheelRpm,
@@ -351,7 +346,12 @@ public class DriveTeleOp extends LinearOpMode {
                                 shootSequence.getShots(), shootHeld ? 1 : 0, shootState,
                                 indexerStatus.replace(' ', '_'), indexerCmd, indexerRpm,
                                 shootSequence.getUnjams(), shootSequence.getUnjamsThisBall(),
-                                intakePower, volts));
+                                intakePower, volts)
+                                + String.format(Locale.US, ",%s,%d,%.1f,%.1f,%.1f\n",
+                                headingSource, pinpointOk ? 1 : 0,
+                                Math.toDegrees(pinpointHeading), Math.toDegrees(imuYaw),
+                                headingValid ? AngleUnit.normalizeDegrees(Math.toDegrees(heading))
+                                        : Double.NaN));
                         if (nowSec - lastFlushSec > 1.0) {
                             log.flush();
                             lastFlushSec = nowSec;
@@ -362,79 +362,81 @@ public class DriveTeleOp extends LinearOpMode {
                     }
                 }
 
-                if (shootState == ShootSequence.State.STUCK) {
-                    telemetry.addLine("INDEXER STUCK - CLEAR MANUALLY: "
-                            + Constants.INDEXER_MAX_UNJAMS_PER_BALL
-                            + " reverse/push tries failed. Release A to retry, or hold LB to reverse.");
-                }
-                if (shootHeld && !flywheelOn) {
-                    telemetry.addLine("SHOOT ignored: flywheel is off (GP2 B).");
-                }
-                if (emergency) {
-                    telemetry.addData("EMERGENCY", "intake + indexer full %s",
-                            emergencyDirection > 0 ? "FORWARD" : "REVERSE");
-                }
-                telemetry.addData("Ball at indexer", "%s (indexBeam1 %s)",
-                        ballPresent ? "YES" : "no", robot.getIndexBeam1State() ? "HIGH" : "LOW");
-                // Flywheel/indexer RPMs are sent as plain numbers so Panels can graph them.
-                // "Setpoint" is the commanded RPM (0 when off); "selected" is what B turns on.
-                // Lights: alliance color, or purple/green snakes with a ball loaded.
-                robot.lights.update(robot.isRedAlliance(), ballPresent, flywheelOn,
+                // Lights: police lights while the shoot command runs (A held, flywheel on);
+                // otherwise alliance color, or purple/green snakes with a ball loaded.
+                robot.lights.update(robot.isRedAlliance(), shootActive, ballPresent, flywheelOn,
                         flywheelSetpointRpm, flywheelRpm);
-                telemetry.addData("Lights", robot.lights.isPresent()
-                        ? String.valueOf(robot.lights.getState()) : "no prism configured");
-                telemetry.addData("Flywheel status", flywheelOn ? "ON" : "OFF");
-                telemetry.addData("Flywheel setpoint (RPM)",
+                double targetDistanceIn = RobotHardware.getTargetDistanceInches(vision,
+                        robot.getSelectedVisionPipeline());
+
+                // ---- Driver Station: alerts (only when they apply), then a short status ----
+                if (shootState == ShootSequence.State.STUCK) {
+                    telemetry.addLine("!! BALL STUCK - release A or hold LB");
+                }
+                if (shootHeld && !flywheelOn) telemetry.addLine("!! Flywheel off - press B");
+                if (emergency) {
+                    telemetry.addLine("!! EMERGENCY " + (emergencyDirection > 0 ? "FWD" : "REV"));
+                }
+                if (log == null) telemetry.addLine("!! Log not recording");
+                telemetry.addData("Flywheel", flywheelOn ? "ON" : "OFF");
+                telemetry.addData("Setpoint (RPM)", "%.0f", flywheelSetpointRpm);
+                telemetry.addData("Actual (RPM)", "%.0f", flywheelRpm);
+                telemetry.addData("Target dist (in)", Double.isNaN(targetDistanceIn)
+                        ? "no target" : String.format(Locale.US, "%.1f", targetDistanceIn));
+                telemetry.addData("Tracking", turretAiming ? "ON" : "OFF");
+                telemetry.update();
+
+                // ---- Panels: full detail; plain numbers so they can be graphed ----
+                panels.addData("Flywheel on", flywheelOn ? 1.0 : 0.0);
+                panels.addData("Flywheel setpoint (RPM)",
                         (double) Math.round(flywheelOn ? flywheelSetpointRpm : 0));
-                telemetry.addData("Flywheel actual (RPM)", (double) Math.round(flywheelRpm));
-                telemetry.addData("Flywheel selected (RPM)", (double) Math.round(flywheelSetpointRpm));
+                panels.addData("Flywheel actual (RPM)", (double) Math.round(flywheelRpm));
+                panels.addData("Flywheel selected (RPM)", (double) Math.round(flywheelSetpointRpm));
                 PIDFCoefficients pidf = robot.getFlywheelPidf();
-                telemetry.addData("Flywheel PIDF", "P %.2f I %.2f D %.2f F %.2f",
-                        pidf.p, pidf.i, pidf.d, pidf.f);
-                telemetry.addData("Shoot (hold A)", shootActive ? "ACTIVE" : "off");
-                telemetry.addData("Shoot state", shootState);
-                telemetry.addData("Intake power", "%.2f", intakePower);
-                telemetry.addData("Intake L/R velocity (ticks/s)", "%.0f / %.0f",
-                        robot.getIntakeLeftVelocity(), robot.getIntakeRightVelocity());
-                telemetry.addData("Indexer status", indexerStatus);
-                telemetry.addData("Indexer setpoint (RPM)", (double) Math.round(
+                panels.addData("Flywheel PIDF", String.format(Locale.US,
+                        "P %.2f I %.2f D %.2f F %.2f", pidf.p, pidf.i, pidf.d, pidf.f));
+                panels.addData("Target distance (in)", targetDistanceIn);
+                panels.addData("Shoot active", shootActive ? 1.0 : 0.0);
+                panels.addData("Shoot state", String.valueOf(shootState));
+                panels.addData("Indexer status", indexerStatus);
+                panels.addData("Indexer setpoint (RPM)", (double) Math.round(
                         shootState == ShootSequence.State.LOADING
                                 || shootState == ShootSequence.State.FEEDING
                                 ? indexerCmd : 0));
-                telemetry.addData("Indexer actual (RPM)", (double) Math.round(indexerRpm));
-                telemetry.addData("Indexer speed (%)", indexerSpeedPercent);
-                telemetry.addData("Stuck recovery", Constants.INDEXER_STUCK_RECOVERY_ENABLED
-                        ? "ON" : "OFF");
-                telemetry.addData("Ball in indexer, not shot",
+                panels.addData("Indexer actual (RPM)", (double) Math.round(indexerRpm));
+                panels.addData("Indexer speed (%)", indexerSpeedPercent);
+                panels.addData("Indexer forward allowed", indexerForwardAllowed ? 1.0 : 0.0);
+                panels.addData("Ball at beam", ballPresent ? 1.0 : 0.0);
+                panels.addData("Ball in indexer, not shot",
                         shootSequence.isBallPending() ? 1.0 : 0.0);
-                telemetry.addData("Shots (flywheel dips)", shootSequence.getShots());
-                telemetry.addData("Unjams", shootSequence.getUnjams());
-                telemetry.addData("Unjams on this ball", shootSequence.getUnjamsThisBall());
-                telemetry.addData("Battery (V)", volts);
-                telemetry.addData("Log", logPath);
-                if (!indexerForwardAllowed) {
-                    telemetry.addData("Indexer feed", "BLOCKED: flywheel off or < %.0f RPM",
-                            Constants.INDEXER_MIN_FLYWHEEL_RPM);
-                }
-                telemetry.addData("Flower wedge", "%s (%.2f)", wedgeUp ? "UP" : "DOWN",
-                        robot.getFlowerWedgePosition());
-                telemetry.addData("Alliance", robot.isRedAlliance() ? "RED" : "BLUE");
-                telemetry.addData("Drive speed", speed);
-                telemetry.addData("Pinpoint status", robot.pinpoint.getDeviceStatus());
-                telemetry.addData("X (in)", "%.3f", pose.getX(DistanceUnit.INCH));
-                telemetry.addData("Y (in)", "%.3f", pose.getY(DistanceUnit.INCH));
-                telemetry.addData("Heading (deg)", "Pinpoint %.1f, drive %.1f",
-                        pose.getHeading(AngleUnit.DEGREES),
-                        AngleUnit.normalizeDegrees(Math.toDegrees(heading)));
-                telemetry.addData("Turret", "%s, pos %.3f",
-                        turretAiming ? "TRACKING ON - " + turretTracker.getState()
-                                : "TRACKING OFF (hold)",
-                        robot.getTurretPosition());
-                telemetry.addData("Turret angle (deg)", "cmd %.1f, aim %.1f, range %.1f..%.1f",
-                        turretTracker.getCommandedAngleDeg(), turretTracker.getAimAngleDeg(),
-                        turretTracker.getMinAngleDeg(), turretTracker.getMaxAngleDeg());
-                addVisionTelemetry();
-                telemetry.update();
+                panels.addData("Shots", shootSequence.getShots());
+                panels.addData("Unjams", shootSequence.getUnjams());
+                panels.addData("Unjams on this ball", shootSequence.getUnjamsThisBall());
+                panels.addData("Intake power", intakePower);
+                panels.addData("Lights", String.valueOf(robot.lights.getState()));
+                panels.addData("Flower wedge", wedgeUp ? "UP" : "DOWN");
+                panels.addData("Alliance", robot.isRedAlliance() ? "RED" : "BLUE");
+                panels.addData("Start position", robot.getStartPositionName());
+                panels.addData("Drive speed", speed);
+                panels.addData("Heading source", String.valueOf(headingSource));
+                panels.addData("Pinpoint status", pinpointRead
+                        ? String.valueOf(robot.pinpoint.getDeviceStatus()) : "READ FAILED");
+                panels.addData("Pinpoint heading (deg)", Math.toDegrees(pinpointHeading));
+                panels.addData("IMU yaw (deg)", Math.toDegrees(imuYaw));
+                panels.addData("IMU pitch (deg)", robot.getImuPitchDegrees());
+                panels.addData("IMU roll (deg)", robot.getImuRollDegrees());
+                panels.addData("X (in)", pose.getX(DistanceUnit.INCH));
+                panels.addData("Y (in)", pose.getY(DistanceUnit.INCH));
+                panels.addData("Heading drive (deg)", headingValid
+                        ? AngleUnit.normalizeDegrees(Math.toDegrees(heading)) : Double.NaN);
+                panels.addData("Turret", turretAiming
+                        ? "TRACKING " + turretTracker.getState() : "OFF (hold)");
+                panels.addData("Turret position", robot.getTurretPosition());
+                panels.addData("Turret angle cmd (deg)", turretTracker.getCommandedAngleDeg());
+                addPanelsVision(panels, vision);
+                panels.addData("Battery (V)", volts);
+                panels.addData("Log", logPath);
+                panels.update();
                 idle();
             }
         } finally {
@@ -460,26 +462,28 @@ public class DriveTeleOp extends LinearOpMode {
         }
     }
 
-    private void addVisionTelemetry() {
-        telemetry.addData("Limelight requested pipeline", robot.getSelectedVisionPipeline());
-        LLResult result = robot.getLatestLimelightResult();
+    /** INIT screen: the two toggle switches and a one-line setup reminder. */
+    private void addInitTelemetry() {
+        telemetry.addData("Alliance", robot.isRedAlliance() ? "RED" : "BLUE");
+        telemetry.addData("Start position", robot.getStartPositionName());
+        telemetry.addLine("Back to wall, front facing left. Keep still.");
+    }
+
+    /** Limelight details for Panels. */
+    private void addPanelsVision(TelemetryManager panels, LLResult result) {
+        panels.addData("Limelight pipeline (requested)", robot.getSelectedVisionPipeline());
         if (result == null) {
-            telemetry.addData("Limelight", "Waiting for data");
+            panels.addData("Limelight", "no data");
             return;
         }
-
-        telemetry.addData("Limelight actual pipeline", result.getPipelineIndex());
-        telemetry.addData("Limelight data age (ms)", result.getStaleness());
-        if (result.getPipelineIndex() != robot.getSelectedVisionPipeline()) {
-            telemetry.addData("Limelight", "Waiting for pipeline switch");
-        } else if (result.isValid()) {
-            telemetry.addData("Limelight", "Target detected (check data age)");
-            telemetry.addData("Limelight tx/ty (deg)", "%.2f / %.2f", result.getTx(), result.getTy());
-            telemetry.addData("Limelight target area (%)", "%.2f", result.getTa());
-            Pose3D botPose = result.getBotpose();
-            if (botPose != null) telemetry.addData("Limelight field pose", botPose);
-        } else {
-            telemetry.addData("Limelight", "No valid target");
+        panels.addData("Limelight pipeline (actual)", result.getPipelineIndex());
+        panels.addData("Limelight age (ms)", result.getStaleness());
+        boolean valid = result.isValid()
+                && result.getPipelineIndex() == robot.getSelectedVisionPipeline();
+        panels.addData("Limelight", valid ? "target" : "no target");
+        if (valid) {
+            panels.addData("Limelight tx (deg)", result.getTx());
+            panels.addData("Limelight ty (deg)", result.getTy());
         }
     }
 }

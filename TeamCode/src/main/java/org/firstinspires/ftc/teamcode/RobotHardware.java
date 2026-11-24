@@ -2,12 +2,15 @@ package org.firstinspires.ftc.teamcode;
 
 import com.qualcomm.hardware.gobilda.GoBildaPinpointDriver;
 import com.qualcomm.hardware.limelightvision.LLResult;
+import com.qualcomm.hardware.limelightvision.LLResultTypes;
 import com.qualcomm.hardware.limelightvision.Limelight3A;
+import com.qualcomm.hardware.rev.RevHubOrientationOnRobot;
 import com.qualcomm.robotcore.hardware.DcMotor;
 import com.qualcomm.robotcore.hardware.DcMotorEx;
 import com.qualcomm.robotcore.hardware.DcMotorSimple;
 import com.qualcomm.robotcore.hardware.DigitalChannel;
 import com.qualcomm.robotcore.hardware.HardwareMap;
+import com.qualcomm.robotcore.hardware.IMU;
 import com.qualcomm.robotcore.hardware.PIDFCoefficients;
 import com.qualcomm.robotcore.hardware.PwmControl;
 import com.qualcomm.robotcore.hardware.Servo;
@@ -16,6 +19,10 @@ import com.qualcomm.robotcore.hardware.ServoImplEx;
 import org.firstinspires.ftc.robotcore.external.navigation.AngleUnit;
 import org.firstinspires.ftc.robotcore.external.navigation.DistanceUnit;
 import org.firstinspires.ftc.robotcore.external.navigation.Pose2D;
+import org.firstinspires.ftc.robotcore.external.navigation.Pose3D;
+import org.firstinspires.ftc.robotcore.external.navigation.Position;
+import org.firstinspires.ftc.robotcore.external.navigation.Quaternion;
+import org.firstinspires.ftc.robotcore.external.navigation.YawPitchRollAngles;
 
 /** Drive configuration carried over from 2025-27248 RobotHardware and PedroConstants. */
 public class RobotHardware {
@@ -23,6 +30,9 @@ public class RobotHardware {
     /** goBILDA Prism status lights (does nothing if "prism" isn't configured). */
     public RobotLights lights;
     private Limelight3A limelight;
+    /** Control Hub IMU, the heading backup (null if "imu" isn't configured). */
+    private IMU imu;
+    private YawPitchRollAngles lastImuAngles;
     private LLResult latestLimelightResult;
     private int selectedVisionPipeline = -1;
     private DcMotorEx leftFront;
@@ -36,7 +46,8 @@ public class RobotHardware {
     private PIDFCoefficients flywheelPidf;
     /** Last flywheel setpoint passed to setFlywheelRpm (0 = off). */
     private double flywheelTargetRpm = 0;
-    private DigitalChannel allianceButton;
+    private DigitalChannel allianceToggle;
+    private DigitalChannel startPositionToggle;
     private DigitalChannel indexBeam1;
     private ServoImplEx flowerWedgeLeft;
     private ServoImplEx flowerWedgeRight;
@@ -88,8 +99,12 @@ public class RobotHardware {
         flowerWedgeRight.setDirection(Servo.Direction.REVERSE);
         configureTurretServo(turret);
 
-        allianceButton = hardwareMap.get(DigitalChannel.class, "allianceButton");
-        allianceButton.setMode(DigitalChannel.Mode.INPUT);
+        // Driver-set toggles: alliance (LOW = red, HIGH = blue) and start position
+        // (START_POSITION_AUDIENCE_STATE = Audience, otherwise Scoring).
+        allianceToggle = hardwareMap.get(DigitalChannel.class, "allianceToggle");
+        allianceToggle.setMode(DigitalChannel.Mode.INPUT);
+        startPositionToggle = hardwareMap.get(DigitalChannel.class, "startPositionToggle");
+        startPositionToggle.setMode(DigitalChannel.Mode.INPUT);
 
         indexBeam1 = hardwareMap.get(DigitalChannel.class, "indexBeam1");
         indexBeam1.setMode(DigitalChannel.Mode.INPUT);
@@ -105,6 +120,13 @@ public class RobotHardware {
                 GoBildaPinpointDriver.EncoderDirection.REVERSED);
         // Keep the robot stationary during initialization while the IMU calibrates.
         pinpoint.resetPosAndIMU();
+
+        // Control Hub IMU: heading backup if the Pinpoint fails (HeadingFusion).
+        imu = Constants.HEADING_IMU_BACKUP_ENABLED ? hardwareMap.tryGet(IMU.class, "imu") : null;
+        if (imu != null) {
+            imu.initialize(new IMU.Parameters(controlHubOrientation()));
+            imu.resetYaw();
+        }
 
         // Starts on the alliance's default pipeline: 8 = all red tags, 9 = all blue tags.
         limelight = hardwareMap.get(Limelight3A.class, "limelight");
@@ -136,6 +158,30 @@ public class RobotHardware {
 
     public int getSelectedVisionPipeline() {
         return selectedVisionPipeline;
+    }
+
+    /**
+     * Floor distance (inches) from the Limelight to the AprilTag it sees best (largest area),
+     * from the Limelight's own 3D solve (target pose in camera space). NaN if there is no
+     * valid, fresh result from the given pipeline or no 3D data. Needs the pipeline's AprilTag
+     * size set correctly in the Limelight web interface.
+     */
+    public static double getTargetDistanceInches(LLResult result, int pipeline) {
+        if (result == null || !result.isValid() || result.getPipelineIndex() != pipeline
+                || result.getStaleness() > Constants.TURRET_MAX_VISION_AGE_MS) {
+            return Double.NaN;
+        }
+        LLResultTypes.FiducialResult best = null;
+        for (LLResultTypes.FiducialResult tag : result.getFiducialResults()) {
+            if (best == null || tag.getTargetArea() > best.getTargetArea()) best = tag;
+        }
+        if (best == null) return Double.NaN;
+        Pose3D targetPose = best.getTargetPoseCameraSpace();
+        if (targetPose == null) return Double.NaN;
+        // Camera space: x right, y down, z forward. Floor distance ignores the height (y).
+        Position p = targetPose.getPosition().toUnit(DistanceUnit.INCH);
+        double distance = Math.hypot(p.x, p.z);
+        return distance > 0 ? distance : Double.NaN; // all zeros = no 3D solve
     }
 
     public void stopVision() {
@@ -288,7 +334,17 @@ public class RobotHardware {
     }
 
     public boolean isRedAlliance() {
-        return !allianceButton.getState();
+        return !allianceToggle.getState();
+    }
+
+    /** True for the Audience start position, false for Scoring (from startPositionToggle). */
+    public boolean isAudienceStart() {
+        return startPositionToggle.getState() == Constants.START_POSITION_AUDIENCE_STATE;
+    }
+
+    /** "Audience" or "Scoring", from startPositionToggle. */
+    public String getStartPositionName() {
+        return isAudienceStart() ? "Audience" : "Scoring";
     }
 
     /** Raw digital state of indexBeam1 (true = HIGH). LOW means a ball is blocking the beam. */
@@ -306,10 +362,82 @@ public class RobotHardware {
      * the Pinpoint's X/Y. Uses the pose from the last pinpoint.update().
      */
     public void resetHeading() {
-        Pose2D pose = pinpoint.getPosition();
-        pinpoint.setPosition(new Pose2D(DistanceUnit.INCH,
-                pose.getX(DistanceUnit.INCH), pose.getY(DistanceUnit.INCH),
-                AngleUnit.RADIANS, 0));
+        setPinpointHeading(0);
+    }
+
+    /**
+     * Sets the Pinpoint heading (rad) while keeping its X/Y (from the last update). Ignored if
+     * the Pinpoint can't be reached.
+     */
+    public void setPinpointHeading(double headingRad) {
+        try {
+            Pose2D pose = pinpoint.getPosition();
+            pinpoint.setPosition(new Pose2D(DistanceUnit.INCH,
+                    pose.getX(DistanceUnit.INCH), pose.getY(DistanceUnit.INCH),
+                    AngleUnit.RADIANS, headingRad));
+        } catch (RuntimeException e) {
+            // Pinpoint unreachable (e.g. cable out); HeadingFusion uses the IMU meanwhile.
+        }
+    }
+
+    /** Reads the Pinpoint; false if the read failed (e.g. I2C cable out). */
+    public boolean updatePinpoint() {
+        try {
+            pinpoint.update();
+            return true;
+        } catch (RuntimeException e) {
+            return false;
+        }
+    }
+
+    /** True if the Pinpoint's last status read is READY. */
+    public boolean isPinpointReady() {
+        try {
+            return pinpoint.getDeviceStatus() == GoBildaPinpointDriver.DeviceStatus.READY;
+        } catch (RuntimeException e) {
+            return false;
+        }
+    }
+
+    /**
+     * Reads the Control Hub IMU once (call once per loop) and returns its yaw (rad, CCW+), or
+     * NaN if there is no IMU or the read failed.
+     */
+    public double readImuYawRadians() {
+        lastImuAngles = null;
+        if (imu == null) return Double.NaN;
+        try {
+            YawPitchRollAngles angles = imu.getRobotYawPitchRollAngles();
+            if (angles == null || angles.getAcquisitionTime() == 0) return Double.NaN;
+            lastImuAngles = angles;
+            return angles.getYaw(AngleUnit.RADIANS);
+        } catch (RuntimeException e) {
+            return Double.NaN;
+        }
+    }
+
+    /** IMU pitch (deg) from the last readImuYawRadians(); about 0 on a level robot. */
+    public double getImuPitchDegrees() {
+        return lastImuAngles == null ? Double.NaN : lastImuAngles.getPitch(AngleUnit.DEGREES);
+    }
+
+    /** IMU roll (deg) from the last readImuYawRadians(); about 0 on a level robot. */
+    public double getImuRollDegrees() {
+        return lastImuAngles == null ? Double.NaN : lastImuAngles.getRoll(AngleUnit.DEGREES);
+    }
+
+    /**
+     * Control Hub mounting: logo facing the robot's left and USB ports up (the SDK's
+     * xyzOrientation(90, -90, 0)), then leaned back CONTROL_HUB_LEAN_BACK_DEG so the logo face
+     * tilts upward: a rotation about the robot's forward (+Y) axis, applied after the base one.
+     * Robot axes (SDK): +X right, +Y forward, +Z up.
+     */
+    static RevHubOrientationOnRobot controlHubOrientation() {
+        Quaternion base = Quaternion.fromMatrix(
+                RevHubOrientationOnRobot.xyzOrientation(90, -90, 0).getRotationMatrix(), 0);
+        double half = Math.toRadians(Constants.CONTROL_HUB_LEAN_BACK_DEG) / 2;
+        Quaternion lean = new Quaternion((float) Math.cos(half), 0f, (float) Math.sin(half), 0f, 0);
+        return new RevHubOrientationOnRobot(lean.multiply(base, 0));
     }
 
     public double getHeadingOffsetRadians() {
