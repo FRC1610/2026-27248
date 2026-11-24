@@ -7,15 +7,26 @@ import com.qualcomm.hardware.limelightvision.LLResult;
 import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
 import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
 import com.qualcomm.robotcore.hardware.PIDFCoefficients;
+import com.qualcomm.robotcore.hardware.VoltageSensor;
 import com.qualcomm.robotcore.util.ElapsedTime;
 
 import org.firstinspires.ftc.robotcore.external.navigation.AngleUnit;
 import org.firstinspires.ftc.robotcore.external.navigation.DistanceUnit;
 import org.firstinspires.ftc.robotcore.external.navigation.Pose2D;
 import org.firstinspires.ftc.robotcore.external.navigation.Pose3D;
+import org.firstinspires.ftc.robotcore.internal.system.AppUtil;
 import org.firstinspires.ftc.teamcode.Constants;
 import org.firstinspires.ftc.teamcode.RobotHardware;
+import org.firstinspires.ftc.teamcode.StuckBallRecovery;
 import org.firstinspires.ftc.teamcode.TurretTracker;
+
+import java.io.BufferedWriter;
+import java.io.File;
+import java.io.FileWriter;
+import java.io.IOException;
+import java.text.SimpleDateFormat;
+import java.util.Date;
+import java.util.Locale;
 
 @TeleOp(name = "Main 2026", group = "TeleOp")
 public class DriveTeleOp extends LinearOpMode {
@@ -25,8 +36,10 @@ public class DriveTeleOp extends LinearOpMode {
     public void runOpMode() {
         // Send all telemetry to both the Driver Station and Panels (http://192.168.43.1:8001).
         telemetry = new JoinedTelemetry(PanelsTelemetry.INSTANCE.getFtcTelemetry(), telemetry);
+        BufferedWriter log = null;
         try {
             robot.init(hardwareMap);
+            VoltageSensor battery = hardwareMap.voltageSensor.iterator().next();
             // Flower wedge starts UP, as in the test OpModes (moves when INIT is pressed).
             boolean wedgeUp = true;
             robot.setFlowerWedgePosition(Constants.FLOWER_WEDGE_UP);
@@ -47,6 +60,8 @@ public class DriveTeleOp extends LinearOpMode {
             telemetry.addLine("GP2: B indexer on/off, dpad right/left indexer +/-5%.");
             telemetry.addLine("GP2: RT intake, LT reverse intake; Y wedge up/down.");
             telemetry.addLine("GP2: hold RB/LB = EMERGENCY intake+indexer full fwd/rev.");
+            telemetry.addLine("Stuck-ball recovery (auto indexer reverse) is "
+                    + (Constants.INDEXER_STUCK_RECOVERY_ENABLED ? "ON." : "OFF."));
             telemetry.addLine("GP2: right stick X = manual turret while tracking is on.");
             telemetry.addLine("Turret tracking starts "
                     + (Constants.TURRET_TRACKING_ON_AT_START ? "ON." : "OFF (turret at start)."));
@@ -83,12 +98,39 @@ public class DriveTeleOp extends LinearOpMode {
             double indexerSpeedPercent = Constants.INDEXER_DEFAULT_SPEED_PERCENT;
             // A ball already in the beam at START does not count as newly detected.
             boolean ballPreviouslyPresent = robot.isBallAtIndexer();
+            StuckBallRecovery stuckBallRecovery = new StuckBallRecovery(
+                    Constants.INDEXER_STUCK_RECOVERY_ENABLED, ballPreviouslyPresent);
+
+            // CSV log of the shooter/indexer every loop: /sdcard/FIRST/data/main_<time>.csv
+            String logPath;
+            try {
+                File dir = AppUtil.ROBOT_DATA_DIR;
+                //noinspection ResultOfMethodCallIgnored
+                dir.mkdirs();
+                File file = new File(dir, "main_"
+                        + new SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(new Date())
+                        + ".csv");
+                log = new BufferedWriter(new FileWriter(file));
+                log.write("t_s,loop_ms,beam_blocked,ball_pending,flywheel_on,setpoint_rpm,"
+                        + "actual_rpm,shots,indexer_on,indexer_state,indexer_cmd,indexer_rpm,"
+                        + "unjams,unjams_this_ball,intake_power,battery_v\n");
+                logPath = file.getAbsolutePath();
+            } catch (IOException e) {
+                log = null;
+                logPath = "LOG FAILED: " + e.getMessage();
+            }
+            double volts = battery.getVoltage();
+            double lastFlushSec = 0;
+            long loops = 0;
+
             ElapsedTime loopTimer = new ElapsedTime();
             double lastLoopSec = loopTimer.seconds();
             while (opModeIsActive()) {
                 double nowSec = loopTimer.seconds();
                 double dtSec = nowSec - lastLoopSec;
                 lastLoopSec = nowSec;
+                loops++;
+                if (loops % 25 == 0) volts = battery.getVoltage();
                 robot.selectAllianceLimelightPipeline();
                 robot.refreshLimelightResult();
                 robot.pinpoint.update();
@@ -194,11 +236,40 @@ public class DriveTeleOp extends LinearOpMode {
                 }
                 dpadLeftPreviouslyPressed = gamepad2.dpad_left;
                 double indexerTargetRpm = Constants.INDEXER_MAX_RPM * indexerSpeedPercent / 100.0;
+                // Stuck-ball recovery: a ball passed the beam but no shot (flywheel dip) followed
+                // within INDEXER_STUCK_TIMEOUT_SEC of feeding, so reverse briefly and feed again.
+                // After INDEXER_MAX_UNJAMS_PER_BALL tries the indexer stops until the driver
+                // clears it (B off, or an emergency button) or a shot is detected.
+                double flywheelRpm = robot.getFlywheelRpm();
+                boolean indexerForwardAllowed = robot.isIndexerForwardAllowed();
+                StuckBallRecovery.Action recovery = stuckBallRecovery.update(ballPresent,
+                        flywheelOn ? flywheelSetpointRpm : 0, flywheelRpm,
+                        indexerOn && !emergency, indexerForwardAllowed, dtSec);
+                boolean unjamming = recovery == StuckBallRecovery.Action.UNJAM;
+                boolean indexerStuck = recovery == StuckBallRecovery.Action.STOPPED_STUCK;
+                double indexerCmd; // logged: RPM when feeding forward, power otherwise
+                String indexerStatus;
                 if (emergency) {
                     robot.setIndexerPower(emergencyDirection);
+                    indexerCmd = emergencyDirection;
+                    indexerStatus = emergencyDirection > 0 ? "EMERGENCY FWD" : "EMERGENCY REV";
+                    // Emergency reverse pushes balls back out; don't unjam for them later.
+                    if (emergencyDirection < 0) stuckBallRecovery.clearPendingBall();
+                } else if (unjamming) {
+                    robot.setIndexerPower(Constants.INDEXER_UNJAM_POWER);
+                    indexerCmd = Constants.INDEXER_UNJAM_POWER;
+                    indexerStatus = "UNJAMMING";
+                } else if (indexerStuck) {
+                    robot.setIndexerPower(0);
+                    indexerCmd = 0;
+                    indexerStatus = "STUCK - CLEAR MANUALLY";
                 } else {
                     robot.setIndexerRpm(indexerOn ? indexerTargetRpm : 0);
+                    indexerCmd = indexerOn && indexerForwardAllowed ? indexerTargetRpm : 0;
+                    indexerStatus = !indexerOn ? "OFF"
+                            : indexerForwardAllowed ? "ON" : "ON (BLOCKED)";
                 }
+                double indexerRpm = robot.getIndexerRpm();
 
                 // Flower wedge (gamepad2): Y toggles between the up and down presets.
                 if (gamepad2.y && !yPreviouslyPressed) {
@@ -222,6 +293,33 @@ public class DriveTeleOp extends LinearOpMode {
                         Math.min(Constants.FLYWHEEL_MAX_RPM, flywheelSetpointRpm));
                 robot.setFlywheelRpm(flywheelOn ? flywheelSetpointRpm : 0);
 
+                // ---- Log (flushed about once a second) ----
+                if (log != null) {
+                    try {
+                        log.write(String.format(Locale.US,
+                                "%.4f,%.2f,%d,%d,%d,%.0f,%.1f,%d,%d,%s,%.2f,%.1f,%d,%d,%.2f,%.2f\n",
+                                nowSec, dtSec * 1000.0, ballPresent ? 1 : 0,
+                                stuckBallRecovery.isBallPending() ? 1 : 0, flywheelOn ? 1 : 0,
+                                flywheelOn ? flywheelSetpointRpm : 0, flywheelRpm,
+                                stuckBallRecovery.getShots(), indexerOn ? 1 : 0,
+                                indexerStatus.replace(' ', '_'), indexerCmd, indexerRpm,
+                                stuckBallRecovery.getUnjams(),
+                                stuckBallRecovery.getUnjamsThisBall(), intakePower, volts));
+                        if (nowSec - lastFlushSec > 1.0) {
+                            log.flush();
+                            lastFlushSec = nowSec;
+                        }
+                    } catch (IOException e) {
+                        logPath = "LOG WRITE FAILED: " + e.getMessage();
+                        log = null;
+                    }
+                }
+
+                if (indexerStuck) {
+                    telemetry.addLine("INDEXER STUCK - CLEAR MANUALLY: "
+                            + Constants.INDEXER_MAX_UNJAMS_PER_BALL
+                            + " unjams failed. GP2 B off/on to retry, or hold LB to reverse.");
+                }
                 if (emergency) {
                     telemetry.addData("EMERGENCY", "intake + indexer full %s",
                             emergencyDirection > 0 ? "FORWARD" : "REVERSE");
@@ -230,7 +328,6 @@ public class DriveTeleOp extends LinearOpMode {
                         ballPresent ? "YES" : "no", robot.getIndexBeam1State() ? "HIGH" : "LOW");
                 // Flywheel/indexer RPMs are sent as plain numbers so Panels can graph them.
                 // "Setpoint" is the commanded RPM (0 when off); "selected" is what A turns on.
-                double flywheelRpm = robot.getFlywheelRpm();
                 // Lights: alliance color, or pulsing orange/green with a ball loaded.
                 robot.lights.update(robot.isRedAlliance(), ballPresent, flywheelOn,
                         flywheelSetpointRpm, flywheelRpm);
@@ -247,20 +344,20 @@ public class DriveTeleOp extends LinearOpMode {
                 telemetry.addData("Intake power", "%.2f", intakePower);
                 telemetry.addData("Intake L/R velocity (ticks/s)", "%.0f / %.0f",
                         robot.getIntakeLeftVelocity(), robot.getIntakeRightVelocity());
-                boolean indexerForwardAllowed = robot.isIndexerForwardAllowed();
-                String indexerStatus;
-                if (emergency) {
-                    indexerStatus = emergencyDirection > 0 ? "EMERGENCY FWD" : "EMERGENCY REV";
-                } else if (indexerOn) {
-                    indexerStatus = indexerForwardAllowed ? "ON" : "ON (BLOCKED)";
-                } else {
-                    indexerStatus = "OFF";
-                }
                 telemetry.addData("Indexer status", indexerStatus);
                 telemetry.addData("Indexer setpoint (RPM)",
-                        (double) Math.round(indexerOn && !emergency ? indexerTargetRpm : 0));
-                telemetry.addData("Indexer actual (RPM)", (double) Math.round(robot.getIndexerRpm()));
+                        (double) Math.round(emergency || unjamming ? 0 : indexerCmd));
+                telemetry.addData("Indexer actual (RPM)", (double) Math.round(indexerRpm));
                 telemetry.addData("Indexer speed (%)", indexerSpeedPercent);
+                telemetry.addData("Stuck recovery", Constants.INDEXER_STUCK_RECOVERY_ENABLED
+                        ? "ON" : "OFF");
+                telemetry.addData("Ball in indexer, not shot",
+                        stuckBallRecovery.isBallPending() ? 1.0 : 0.0);
+                telemetry.addData("Shots (flywheel dips)", stuckBallRecovery.getShots());
+                telemetry.addData("Unjams", stuckBallRecovery.getUnjams());
+                telemetry.addData("Unjams on this ball", stuckBallRecovery.getUnjamsThisBall());
+                telemetry.addData("Battery (V)", volts);
+                telemetry.addData("Log", logPath);
                 if (!indexerForwardAllowed) {
                     telemetry.addData("Indexer forward", "BLOCKED: flywheel off or < %.0f RPM",
                             Constants.INDEXER_MIN_FLYWHEEL_RPM);
@@ -294,7 +391,17 @@ public class DriveTeleOp extends LinearOpMode {
                 try {
                     robot.stopMechanisms();
                 } finally {
-                    robot.stopVision();
+                    try {
+                        robot.stopVision();
+                    } finally {
+                        if (log != null) {
+                            try {
+                                log.close();
+                            } catch (IOException ignored) {
+                                // Nothing else to do at stop.
+                            }
+                        }
+                    }
                 }
             }
         }

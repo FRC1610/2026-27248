@@ -76,6 +76,28 @@ public final class Constants {
      */
     public static final double INDEXER_MIN_FLYWHEEL_RPM = 2000.0;
 
+    // ---- Stuck-ball recovery in Main 2026 (StuckBallRecovery; same defaults as Shot Counter Test) ----
+    /** false = Main 2026 never reverses the indexer automatically. */
+    public static final boolean INDEXER_STUCK_RECOVERY_ENABLED = true;
+    /** A shot is detected when the flywheel falls this far below its setpoint (RPM). */
+    public static final double SHOT_DROP_RPM = 150.0;
+    /** Shot detection (re-)arms once the flywheel is back within this of its setpoint (RPM). */
+    public static final double SHOT_REARM_RPM = 100.0;
+    /** Stuck ball: indexer fed forward this long (s) after a ball passed the beam, with no shot. */
+    public static final double INDEXER_STUCK_TIMEOUT_SEC = 0.4;
+    /**
+     * Unjam: indexer power (negative = reverse) and duration (s). About 0.08 s is spent braking
+     * from full forward speed, so 0.35 s gives ~0.25 s of real reverse.
+     */
+    public static final double INDEXER_UNJAM_POWER = -1.0;
+    public static final double INDEXER_UNJAM_SEC = 0.35;
+    /**
+     * Unjams allowed on one ball before Main 2026 stops the indexer and shows "STUCK - CLEAR
+     * MANUALLY" (instead of looping forward/reverse). Cleared by a shot, turning the indexer off
+     * (gamepad2 B) or an emergency button.
+     */
+    public static final int INDEXER_MAX_UNJAMS_PER_BALL = 3;
+
     // ---- Indexer beam sensor (indexBeam1) ----
     /**
      * indexBeam1 reading (DigitalChannel.getState()) that means a ball is blocking the beam:
