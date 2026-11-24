@@ -9,17 +9,29 @@ Gamepad 2 (operator) runs the mechanisms:
 
 | Control | Action |
 | --- | --- |
-| RT / LT | Intake forward / reverse (proportional) |
-| B | Indexer on/off |
-| D-pad right / left | Indexer speed +/-5% |
-| A | Flywheel on/off |
-| X | Turret tracking on/off |
+| RT / LT | Intake forward / reverse (proportional). RT also runs the indexer until a ball reaches the beam |
+| Hold A | **Shoot**: feed one ball at a time (flywheel must be on) |
+| D-pad right / left | Indexer feed speed +/-5% (default 70%; loading stays at 40%) |
+| X | Flywheel on/off (off also cancels shoot until A is released) |
+| B | Turret tracking on/off |
 | D-pad up / down | Flywheel setpoint +/-100 RPM |
 | Y | Flower wedge up/down |
 | Hold RB / LB | **Emergency**: intake and indexer full forward / reverse |
 | Right stick X | Manual turret while tracking is on |
 
-A ball newly reaching the indexer beam turns both the flywheel and turret tracking on.
+The flywheel and turret tracking only turn on from the buttons (a ball at the beam no longer
+turns them on).
+
+**Loading:** while the intake runs forward, the indexer runs slowly
+(`INDEXER_LOAD_SPEED_PERCENT`, 40%) until `indexBeam1` sees a ball, then stops with the ball
+staged at the beam. The intake keeps following RT.
+
+**Shoot sequence (hold A, `ShootSequence`):** wait until the flywheel is back within
+`SHOOT_READY_TOLERANCE_RPM` of its setpoint, feed the staged ball with the intake stopped
+until the shot is detected (flywheel dip), then run the intake and indexer until the next ball
+reaches the beam, and repeat. If no shot follows within `INDEXER_STUCK_TIMEOUT_SEC`, the
+indexer reverses until the ball is back at the beam, then pushes at 100% until it shoots
+(up to `INDEXER_MAX_UNJAMS_PER_BALL` tries, then STUCK until A is released).
 
 The turret auto-aims at the selected alliance pipeline's AprilTag target using the
 turret-mounted Limelight (`tx`) plus Pinpoint heading changes (`TurretTracker`). When the

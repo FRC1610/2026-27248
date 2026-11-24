@@ -198,6 +198,21 @@ public class RobotHardware {
         }
     }
 
+    /**
+     * Closed-loop indexer speed for loading a ball up to indexBeam1, clipped to
+     * [0, INDEXER_MAX_RPM]. Unlike setIndexerRpm this ignores the flywheel interlock, so a ball
+     * can be staged at the beam with the flywheel off. Only use it while the beam is clear and
+     * no ball is in the indexer (the caller stops it when the beam sees a ball).
+     */
+    public void setIndexerLoadRpm(double rpm) {
+        double target = clip(rpm, 0, Constants.INDEXER_MAX_RPM);
+        if (target == 0) {
+            indexer.setPower(0);
+        } else {
+            indexer.setVelocity(target * Constants.INDEXER_TICKS_PER_REV / 60.0);
+        }
+    }
+
     public double getIndexerRpm() {
         return indexer.getVelocity() * 60.0 / Constants.INDEXER_TICKS_PER_REV;
     }

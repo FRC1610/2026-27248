@@ -68,7 +68,14 @@ public final class Constants {
     // ---- Indexer (values from the original TestMode) ----
     public static final double INDEXER_TICKS_PER_REV = 103.6;
     public static final double INDEXER_MAX_RPM = 1620.0;
-    public static final double INDEXER_DEFAULT_SPEED_PERCENT = 75.0;
+    /** Feed speed (shooting). Lowered from 75 after the 2026-11-22 practice. */
+    public static final double INDEXER_DEFAULT_SPEED_PERCENT = 70.0;
+    /**
+     * Loading speed (% of INDEXER_MAX_RPM) while the intake brings a ball up to indexBeam1. Kept
+     * low so the ball stops at the beam (the start of the indexer path) instead of coasting past.
+     * Not changed by the d-pad.
+     */
+    public static final double INDEXER_LOAD_SPEED_PERCENT = 40.0;
     public static final double INDEXER_SPEED_STEP_PERCENT = 5.0;
     /**
      * The indexer may only run forward while the flywheel is commanded on and measures at least
@@ -76,25 +83,36 @@ public final class Constants {
      */
     public static final double INDEXER_MIN_FLYWHEEL_RPM = 2000.0;
 
-    // ---- Stuck-ball recovery in Main 2026 (StuckBallRecovery; same defaults as Shot Counter Test) ----
-    /** false = Main 2026 never reverses the indexer automatically. */
+    // ---- Shoot sequence and stuck-ball recovery in Main 2026 (ShootSequence) ----
+    /** false = Main 2026 never reverses/pushes a stuck ball automatically. */
     public static final boolean INDEXER_STUCK_RECOVERY_ENABLED = true;
     /** A shot is detected when the flywheel falls this far below its setpoint (RPM). */
     public static final double SHOT_DROP_RPM = 150.0;
     /** Shot detection (re-)arms once the flywheel is back within this of its setpoint (RPM). */
     public static final double SHOT_REARM_RPM = 100.0;
-    /** Stuck ball: indexer fed forward this long (s) after a ball passed the beam, with no shot. */
-    public static final double INDEXER_STUCK_TIMEOUT_SEC = 0.4;
     /**
-     * Unjam: indexer power (negative = reverse) and duration (s). About 0.08 s is spent braking
-     * from full forward speed, so 0.35 s gives ~0.25 s of real reverse.
+     * The next ball is fed once the flywheel is back within this far below its setpoint (RPM)
+     * after a shot ("wait for recovery"; same as the green-light tolerance).
      */
-    public static final double INDEXER_UNJAM_POWER = -1.0;
-    public static final double INDEXER_UNJAM_SEC = 0.35;
+    public static final double SHOOT_READY_TOLERANCE_RPM = 50.0;
+    /** Intake power while the shoot sequence loads the next ball. */
+    public static final double SHOOT_INTAKE_POWER = 1.0;
     /**
-     * Unjams allowed on one ball before Main 2026 stops the indexer and shows "STUCK - CLEAR
-     * MANUALLY" (instead of looping forward/reverse). Cleared by a shot, turning the indexer off
-     * (gamepad2 B) or an emergency button.
+     * Stuck ball: indexer fed forward this long (s) with no shot (timed from the start of feeding,
+     * and again from the ball passing the beam).
+     */
+    public static final double INDEXER_STUCK_TIMEOUT_SEC = 0.4;
+    /** Stuck ball: indexer power (negative = reverse) used to back the ball up to the beam. */
+    public static final double INDEXER_UNJAM_POWER = -1.0;
+    /** Longest reverse (s) while waiting for the stuck ball to reach the beam. */
+    public static final double INDEXER_STUCK_REVERSE_MAX_SEC = 1.0;
+    /** Stuck ball: indexer power used to push the ball through after reversing (100%). */
+    public static final double INDEXER_STUCK_PUSH_POWER = 1.0;
+    /** Longest push (s) with no shot before reversing and pushing again. */
+    public static final double INDEXER_STUCK_PUSH_MAX_SEC = 1.5;
+    /**
+     * Reverse-and-push attempts allowed on one ball before Main 2026 stops the indexer and shows
+     * "STUCK" (instead of looping). Cleared by a shot or releasing shoot (gamepad2 A).
      */
     public static final int INDEXER_MAX_UNJAMS_PER_BALL = 3;
 

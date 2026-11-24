@@ -17,7 +17,7 @@ import org.firstinspires.ftc.robotcore.external.navigation.Pose3D;
 import org.firstinspires.ftc.robotcore.internal.system.AppUtil;
 import org.firstinspires.ftc.teamcode.Constants;
 import org.firstinspires.ftc.teamcode.RobotHardware;
-import org.firstinspires.ftc.teamcode.StuckBallRecovery;
+import org.firstinspires.ftc.teamcode.ShootSequence;
 import org.firstinspires.ftc.teamcode.TurretTracker;
 
 import java.io.BufferedWriter;
@@ -44,9 +44,8 @@ public class DriveTeleOp extends LinearOpMode {
             boolean wedgeUp = true;
             robot.setFlowerWedgePosition(Constants.FLOWER_WEDGE_UP);
             // Turret starts at the hold position (facing forward; moves when INIT is pressed).
-            // While tracking is on (gamepad2 X, or a ball reaching the indexer beam), TurretTracker
-            // aims it; otherwise it holds the hold position. Commands are clipped to
-            // TURRET_MIN/MAX_POSITION.
+            // While tracking is on (gamepad2 B), TurretTracker aims it; otherwise it holds the
+            // hold position. Commands are clipped to TURRET_MIN/MAX_POSITION.
             robot.setTurretPosition(Constants.TURRET_HOLD_POSITION);
             TurretTracker turretTracker = new TurretTracker(Constants.TURRET_HOLD_POSITION);
             telemetry.addLine("Keep robot stationary while Pinpoint calibrates.");
@@ -54,13 +53,13 @@ public class DriveTeleOp extends LinearOpMode {
             telemetry.addLine("Robot must start with its front facing the drivers' RIGHT"
                     + " (-90 deg start offset).");
             telemetry.addLine("GP1 (driver): Back/Share makes current facing 'forward' (no offset).");
-            telemetry.addLine("GP2: A flywheel on/off, dpad up/down RPM +/-100.");
-            telemetry.addLine("GP2: X turret tracking on/off.");
-            telemetry.addLine("A ball reaching the indexer beam turns flywheel + tracking on.");
-            telemetry.addLine("GP2: B indexer on/off, dpad right/left indexer +/-5%.");
-            telemetry.addLine("GP2: RT intake, LT reverse intake; Y wedge up/down.");
+            telemetry.addLine("GP2: X flywheel on/off, dpad up/down RPM +/-100.");
+            telemetry.addLine("GP2: B turret tracking on/off.");
+            telemetry.addLine("GP2: hold A = SHOOT (one ball at a time, flywheel must be on).");
+            telemetry.addLine("GP2: RT intake (indexer loads a ball to the beam), LT reverse.");
+            telemetry.addLine("GP2: dpad right/left indexer +/-5%; Y wedge up/down.");
             telemetry.addLine("GP2: hold RB/LB = EMERGENCY intake+indexer full fwd/rev.");
-            telemetry.addLine("Stuck-ball recovery (auto indexer reverse) is "
+            telemetry.addLine("Stuck-ball recovery (reverse to beam, push 100%) is "
                     + (Constants.INDEXER_STUCK_RECOVERY_ENABLED ? "ON." : "OFF."));
             telemetry.addLine("GP2: right stick X = manual turret while tracking is on.");
             telemetry.addLine("Turret tracking starts "
@@ -83,23 +82,22 @@ public class DriveTeleOp extends LinearOpMode {
             // driver resets the heading.
             boolean startHeadingOffsetActive = true;
             double speed = Constants.DRIVE_FULL_SPEED;
-            boolean aPreviouslyPressed = false;
             boolean xPreviouslyPressed = false;
+            boolean bPreviouslyPressed = false;
             boolean turretTrackingOn = Constants.TURRET_TRACKING_ON_AT_START;
             boolean dpadUpPreviouslyPressed = false;
             boolean dpadDownPreviouslyPressed = false;
             boolean flywheelOn = false;
             double flywheelSetpointRpm = Constants.FLYWHEEL_DEFAULT_RPM;
-            boolean bPreviouslyPressed = false;
+            // Set when the flywheel is turned off; the shoot command (A) is ignored until A is
+            // released.
+            boolean shootCancelled = false;
             boolean yPreviouslyPressed = false;
             boolean dpadRightPreviouslyPressed = false;
             boolean dpadLeftPreviouslyPressed = false;
-            boolean indexerOn = false;
             double indexerSpeedPercent = Constants.INDEXER_DEFAULT_SPEED_PERCENT;
-            // A ball already in the beam at START does not count as newly detected.
-            boolean ballPreviouslyPresent = robot.isBallAtIndexer();
-            StuckBallRecovery stuckBallRecovery = new StuckBallRecovery(
-                    Constants.INDEXER_STUCK_RECOVERY_ENABLED, ballPreviouslyPresent);
+            ShootSequence shootSequence = new ShootSequence(
+                    Constants.INDEXER_STUCK_RECOVERY_ENABLED, robot.isBallAtIndexer());
 
             // CSV log of the shooter/indexer every loop: /sdcard/FIRST/data/main_<time>.csv
             String logPath;
@@ -112,8 +110,9 @@ public class DriveTeleOp extends LinearOpMode {
                         + ".csv");
                 log = new BufferedWriter(new FileWriter(file));
                 log.write("t_s,loop_ms,beam_blocked,ball_pending,flywheel_on,setpoint_rpm,"
-                        + "actual_rpm,shots,indexer_on,indexer_state,indexer_cmd,indexer_rpm,"
-                        + "unjams,unjams_this_ball,intake_power,battery_v\n");
+                        + "actual_rpm,flywheel_ready,shots,shoot_held,shoot_state,indexer_status,"
+                        + "indexer_cmd,indexer_rpm,unjams,unjams_this_ball,intake_power,"
+                        + "battery_v\n");
                 logPath = file.getAbsolutePath();
             } catch (IOException e) {
                 log = null;
@@ -168,22 +167,34 @@ public class DriveTeleOp extends LinearOpMode {
                     telemetry.addLine("Drive stopped: Pinpoint must be ready with a valid heading.");
                 }
 
-                // Flywheel and turret tracking on/off. A ball newly breaking the indexer beam turns
-                // both on (only on the not-blocked -> blocked change, so turning them off while a
-                // ball is still in the beam does not turn them straight back on). Gamepad2 A
-                // toggles the flywheel and X toggles tracking; they are checked after the beam so
-                // a press always wins.
+                // Flywheel and turret tracking on/off (gamepad2): X toggles the flywheel, B toggles
+                // tracking. A ball at the indexer beam does not turn either on. Turning the
+                // flywheel off also stops the indexer: the shoot command is cancelled until A is
+                // released.
                 boolean ballPresent = robot.isBallAtIndexer();
-                if (ballPresent && !ballPreviouslyPresent) {
-                    flywheelOn = true;
-                    turretTrackingOn = true;
+                if (gamepad2.x && !xPreviouslyPressed) {
+                    flywheelOn = !flywheelOn;
+                    if (!flywheelOn) shootCancelled = true;
                 }
-                ballPreviouslyPresent = ballPresent;
-                if (gamepad2.a && !aPreviouslyPressed) flywheelOn = !flywheelOn;
-                aPreviouslyPressed = gamepad2.a;
-                if (gamepad2.x && !xPreviouslyPressed) turretTrackingOn = !turretTrackingOn;
                 xPreviouslyPressed = gamepad2.x;
+                if (gamepad2.b && !bPreviouslyPressed) turretTrackingOn = !turretTrackingOn;
+                bPreviouslyPressed = gamepad2.b;
                 boolean turretAiming = turretTrackingOn;
+
+                // Flywheel setpoint (gamepad2): d-pad up/down adjusts by 100 RPM. Commanded before
+                // the indexer so the indexer interlock sees this loop's flywheel command.
+                if (gamepad2.dpad_up && !dpadUpPreviouslyPressed) {
+                    flywheelSetpointRpm += Constants.FLYWHEEL_RPM_STEP;
+                }
+                dpadUpPreviouslyPressed = gamepad2.dpad_up;
+                if (gamepad2.dpad_down && !dpadDownPreviouslyPressed) {
+                    flywheelSetpointRpm -= Constants.FLYWHEEL_RPM_STEP;
+                }
+                dpadDownPreviouslyPressed = gamepad2.dpad_down;
+                flywheelSetpointRpm = Math.max(0,
+                        Math.min(Constants.FLYWHEEL_MAX_RPM, flywheelSetpointRpm));
+                robot.setFlywheelRpm(flywheelOn ? flywheelSetpointRpm : 0);
+                double flywheelRpm = robot.getFlywheelRpm();
 
                 // Turret: while aiming, TurretTracker uses the turret-mounted Limelight's tx plus
                 // Pinpoint heading changes (gamepad2 right stick X = manual). Only a valid, fresh
@@ -215,16 +226,18 @@ public class DriveTeleOp extends LinearOpMode {
                         - (gamepad2.left_bumper ? 1 : 0);
                 boolean emergency = emergencyDirection != 0;
 
-                // Intake (gamepad2): right trigger forward, left trigger reverse.
-                double intakePower = gamepad2.right_trigger - gamepad2.left_trigger;
-                if (Math.abs(intakePower) < Constants.TRIGGER_DEADBAND) intakePower = 0;
-                if (emergency) intakePower = emergencyDirection;
-                robot.setIntakePower(intakePower);
+                // Shoot command (gamepad2): hold A. Needs the flywheel on; after the flywheel is
+                // turned off, A is ignored until it is released.
+                if (!gamepad2.a) shootCancelled = false;
+                boolean shootHeld = gamepad2.a && !shootCancelled;
+                boolean shootActive = shootHeld && flywheelOn && !emergency;
 
-                // Indexer (gamepad2): B toggles, d-pad right/left adjusts speed by 5%.
-                // Toggle/speed changes still register during an emergency and apply on release.
-                if (gamepad2.b && !bPreviouslyPressed) indexerOn = !indexerOn;
-                bPreviouslyPressed = gamepad2.b;
+                // Driver intake (gamepad2): right trigger forward, left trigger reverse.
+                double driverIntakePower = gamepad2.right_trigger - gamepad2.left_trigger;
+                if (Math.abs(driverIntakePower) < Constants.TRIGGER_DEADBAND) driverIntakePower = 0;
+
+                // Indexer feed speed (gamepad2): d-pad right/left adjusts by 5%. Loading always uses
+                // the slower INDEXER_LOAD_SPEED_PERCENT.
                 if (gamepad2.dpad_right && !dpadRightPreviouslyPressed) {
                     indexerSpeedPercent = Math.min(100,
                             indexerSpeedPercent + Constants.INDEXER_SPEED_STEP_PERCENT);
@@ -236,39 +249,86 @@ public class DriveTeleOp extends LinearOpMode {
                 }
                 dpadLeftPreviouslyPressed = gamepad2.dpad_left;
                 double indexerTargetRpm = Constants.INDEXER_MAX_RPM * indexerSpeedPercent / 100.0;
-                // Stuck-ball recovery: a ball passed the beam but no shot (flywheel dip) followed
-                // within INDEXER_STUCK_TIMEOUT_SEC of feeding, so reverse briefly and feed again.
-                // After INDEXER_MAX_UNJAMS_PER_BALL tries the indexer stops until the driver
-                // clears it (B off, or an emergency button) or a shot is detected.
-                double flywheelRpm = robot.getFlywheelRpm();
+                double indexerLoadRpm = Constants.INDEXER_MAX_RPM
+                        * Constants.INDEXER_LOAD_SPEED_PERCENT / 100.0;
+
+                // Loading and shooting (ShootSequence):
+                // - RT intake runs the indexer too until a ball reaches the beam; the indexer then
+                //   waits there while the intake keeps following RT.
+                // - Holding A (flywheel on) feeds one ball at a time: wait for the flywheel to
+                //   recover, feed with the intake stopped until the shot, then intake + indexer
+                //   until the next ball reaches the beam, and repeat.
+                // - A stuck ball (no shot) is reversed until it is back at the beam, then pushed
+                //   at 100% until it shoots.
+                ShootSequence.State shootState = shootSequence.update(ballPresent, shootActive,
+                        driverIntakePower > 0 && !emergency,
+                        flywheelOn ? flywheelSetpointRpm : 0, flywheelRpm, dtSec);
+                // Emergency reverse pushes balls back out; forget any ball in the indexer.
+                if (emergency && emergencyDirection < 0) shootSequence.clearPendingBall();
+
                 boolean indexerForwardAllowed = robot.isIndexerForwardAllowed();
-                StuckBallRecovery.Action recovery = stuckBallRecovery.update(ballPresent,
-                        flywheelOn ? flywheelSetpointRpm : 0, flywheelRpm,
-                        indexerOn && !emergency, indexerForwardAllowed, dtSec);
-                boolean unjamming = recovery == StuckBallRecovery.Action.UNJAM;
-                boolean indexerStuck = recovery == StuckBallRecovery.Action.STOPPED_STUCK;
-                double indexerCmd; // logged: RPM when feeding forward, power otherwise
+                double intakePower;
+                double indexerCmd; // logged: RPM when running closed loop, power otherwise
                 String indexerStatus;
                 if (emergency) {
+                    intakePower = emergencyDirection;
                     robot.setIndexerPower(emergencyDirection);
                     indexerCmd = emergencyDirection;
                     indexerStatus = emergencyDirection > 0 ? "EMERGENCY FWD" : "EMERGENCY REV";
-                    // Emergency reverse pushes balls back out; don't unjam for them later.
-                    if (emergencyDirection < 0) stuckBallRecovery.clearPendingBall();
-                } else if (unjamming) {
-                    robot.setIndexerPower(Constants.INDEXER_UNJAM_POWER);
-                    indexerCmd = Constants.INDEXER_UNJAM_POWER;
-                    indexerStatus = "UNJAMMING";
-                } else if (indexerStuck) {
-                    robot.setIndexerPower(0);
-                    indexerCmd = 0;
-                    indexerStatus = "STUCK - CLEAR MANUALLY";
                 } else {
-                    robot.setIndexerRpm(indexerOn ? indexerTargetRpm : 0);
-                    indexerCmd = indexerOn && indexerForwardAllowed ? indexerTargetRpm : 0;
-                    indexerStatus = !indexerOn ? "OFF"
-                            : indexerForwardAllowed ? "ON" : "ON (BLOCKED)";
+                    switch (shootState) {
+                        case LOADING:
+                            // Staging up to the beam only, so the flywheel interlock is bypassed.
+                            // Slow (INDEXER_LOAD_SPEED_PERCENT) so the ball stops at the beam.
+                            robot.setIndexerLoadRpm(indexerLoadRpm);
+                            indexerCmd = indexerLoadRpm;
+                            intakePower = shootActive ? Constants.SHOOT_INTAKE_POWER
+                                    : driverIntakePower;
+                            indexerStatus = "LOADING";
+                            break;
+                        case FEEDING:
+                            robot.setIndexerRpm(indexerTargetRpm);
+                            indexerCmd = indexerForwardAllowed ? indexerTargetRpm : 0;
+                            intakePower = 0;
+                            indexerStatus = indexerForwardAllowed ? "FEEDING" : "FEEDING (BLOCKED)";
+                            break;
+                        case REVERSING:
+                            robot.setIndexerPower(Constants.INDEXER_UNJAM_POWER);
+                            indexerCmd = Constants.INDEXER_UNJAM_POWER;
+                            intakePower = 0;
+                            indexerStatus = "STUCK - REVERSING";
+                            break;
+                        case PUSHING:
+                            robot.setIndexerPower(Constants.INDEXER_STUCK_PUSH_POWER);
+                            indexerCmd = indexerForwardAllowed
+                                    ? Constants.INDEXER_STUCK_PUSH_POWER : 0;
+                            intakePower = 0;
+                            indexerStatus = "STUCK - PUSHING 100%";
+                            break;
+                        case WAITING:
+                            robot.setIndexerPower(0);
+                            indexerCmd = 0;
+                            intakePower = 0;
+                            indexerStatus = "WAITING FOR FLYWHEEL";
+                            break;
+                        case STUCK:
+                            robot.setIndexerPower(0);
+                            indexerCmd = 0;
+                            intakePower = 0;
+                            indexerStatus = "STUCK - CLEAR MANUALLY";
+                            break;
+                        case HOLDING:
+                        case IDLE:
+                        default:
+                            robot.setIndexerPower(0);
+                            indexerCmd = 0;
+                            intakePower = driverIntakePower;
+                            indexerStatus = shootState == ShootSequence.State.HOLDING
+                                    ? "BALL READY" : "OFF";
+                            break;
+                    }
                 }
+                robot.setIntakePower(intakePower);
                 double indexerRpm = robot.getIndexerRpm();
 
                 // Flower wedge (gamepad2): Y toggles between the up and down presets.
@@ -279,32 +339,20 @@ public class DriveTeleOp extends LinearOpMode {
                 }
                 yPreviouslyPressed = gamepad2.y;
 
-                // Flywheel (gamepad2): on/off is set above (A or ball detected); d-pad up/down
-                // adjusts the setpoint by 100 RPM.
-                if (gamepad2.dpad_up && !dpadUpPreviouslyPressed) {
-                    flywheelSetpointRpm += Constants.FLYWHEEL_RPM_STEP;
-                }
-                dpadUpPreviouslyPressed = gamepad2.dpad_up;
-                if (gamepad2.dpad_down && !dpadDownPreviouslyPressed) {
-                    flywheelSetpointRpm -= Constants.FLYWHEEL_RPM_STEP;
-                }
-                dpadDownPreviouslyPressed = gamepad2.dpad_down;
-                flywheelSetpointRpm = Math.max(0,
-                        Math.min(Constants.FLYWHEEL_MAX_RPM, flywheelSetpointRpm));
-                robot.setFlywheelRpm(flywheelOn ? flywheelSetpointRpm : 0);
-
                 // ---- Log (flushed about once a second) ----
                 if (log != null) {
                     try {
                         log.write(String.format(Locale.US,
-                                "%.4f,%.2f,%d,%d,%d,%.0f,%.1f,%d,%d,%s,%.2f,%.1f,%d,%d,%.2f,%.2f\n",
+                                "%.4f,%.2f,%d,%d,%d,%.0f,%.1f,%d,%d,%d,%s,%s,%.2f,%.1f,%d,%d,%.2f,"
+                                        + "%.2f\n",
                                 nowSec, dtSec * 1000.0, ballPresent ? 1 : 0,
-                                stuckBallRecovery.isBallPending() ? 1 : 0, flywheelOn ? 1 : 0,
+                                shootSequence.isBallPending() ? 1 : 0, flywheelOn ? 1 : 0,
                                 flywheelOn ? flywheelSetpointRpm : 0, flywheelRpm,
-                                stuckBallRecovery.getShots(), indexerOn ? 1 : 0,
+                                shootSequence.isFlywheelReady() ? 1 : 0,
+                                shootSequence.getShots(), shootHeld ? 1 : 0, shootState,
                                 indexerStatus.replace(' ', '_'), indexerCmd, indexerRpm,
-                                stuckBallRecovery.getUnjams(),
-                                stuckBallRecovery.getUnjamsThisBall(), intakePower, volts));
+                                shootSequence.getUnjams(), shootSequence.getUnjamsThisBall(),
+                                intakePower, volts));
                         if (nowSec - lastFlushSec > 1.0) {
                             log.flush();
                             lastFlushSec = nowSec;
@@ -315,10 +363,13 @@ public class DriveTeleOp extends LinearOpMode {
                     }
                 }
 
-                if (indexerStuck) {
+                if (shootState == ShootSequence.State.STUCK) {
                     telemetry.addLine("INDEXER STUCK - CLEAR MANUALLY: "
                             + Constants.INDEXER_MAX_UNJAMS_PER_BALL
-                            + " unjams failed. GP2 B off/on to retry, or hold LB to reverse.");
+                            + " reverse/push tries failed. Release A to retry, or hold LB to reverse.");
+                }
+                if (shootHeld && !flywheelOn) {
+                    telemetry.addLine("SHOOT ignored: flywheel is off (GP2 X).");
                 }
                 if (emergency) {
                     telemetry.addData("EMERGENCY", "intake + indexer full %s",
@@ -327,8 +378,8 @@ public class DriveTeleOp extends LinearOpMode {
                 telemetry.addData("Ball at indexer", "%s (indexBeam1 %s)",
                         ballPresent ? "YES" : "no", robot.getIndexBeam1State() ? "HIGH" : "LOW");
                 // Flywheel/indexer RPMs are sent as plain numbers so Panels can graph them.
-                // "Setpoint" is the commanded RPM (0 when off); "selected" is what A turns on.
-                // Lights: alliance color, or pulsing orange/green with a ball loaded.
+                // "Setpoint" is the commanded RPM (0 when off); "selected" is what X turns on.
+                // Lights: alliance color, or purple/green snakes with a ball loaded.
                 robot.lights.update(robot.isRedAlliance(), ballPresent, flywheelOn,
                         flywheelSetpointRpm, flywheelRpm);
                 telemetry.addData("Lights", robot.lights.isPresent()
@@ -341,25 +392,29 @@ public class DriveTeleOp extends LinearOpMode {
                 PIDFCoefficients pidf = robot.getFlywheelPidf();
                 telemetry.addData("Flywheel PIDF", "P %.2f I %.2f D %.2f F %.2f",
                         pidf.p, pidf.i, pidf.d, pidf.f);
+                telemetry.addData("Shoot (hold A)", shootActive ? "ACTIVE" : "off");
+                telemetry.addData("Shoot state", shootState);
                 telemetry.addData("Intake power", "%.2f", intakePower);
                 telemetry.addData("Intake L/R velocity (ticks/s)", "%.0f / %.0f",
                         robot.getIntakeLeftVelocity(), robot.getIntakeRightVelocity());
                 telemetry.addData("Indexer status", indexerStatus);
-                telemetry.addData("Indexer setpoint (RPM)",
-                        (double) Math.round(emergency || unjamming ? 0 : indexerCmd));
+                telemetry.addData("Indexer setpoint (RPM)", (double) Math.round(
+                        shootState == ShootSequence.State.LOADING
+                                || shootState == ShootSequence.State.FEEDING
+                                ? indexerCmd : 0));
                 telemetry.addData("Indexer actual (RPM)", (double) Math.round(indexerRpm));
                 telemetry.addData("Indexer speed (%)", indexerSpeedPercent);
                 telemetry.addData("Stuck recovery", Constants.INDEXER_STUCK_RECOVERY_ENABLED
                         ? "ON" : "OFF");
                 telemetry.addData("Ball in indexer, not shot",
-                        stuckBallRecovery.isBallPending() ? 1.0 : 0.0);
-                telemetry.addData("Shots (flywheel dips)", stuckBallRecovery.getShots());
-                telemetry.addData("Unjams", stuckBallRecovery.getUnjams());
-                telemetry.addData("Unjams on this ball", stuckBallRecovery.getUnjamsThisBall());
+                        shootSequence.isBallPending() ? 1.0 : 0.0);
+                telemetry.addData("Shots (flywheel dips)", shootSequence.getShots());
+                telemetry.addData("Unjams", shootSequence.getUnjams());
+                telemetry.addData("Unjams on this ball", shootSequence.getUnjamsThisBall());
                 telemetry.addData("Battery (V)", volts);
                 telemetry.addData("Log", logPath);
                 if (!indexerForwardAllowed) {
-                    telemetry.addData("Indexer forward", "BLOCKED: flywheel off or < %.0f RPM",
+                    telemetry.addData("Indexer feed", "BLOCKED: flywheel off or < %.0f RPM",
                             Constants.INDEXER_MIN_FLYWHEEL_RPM);
                 }
                 telemetry.addData("Flower wedge", "%s (%.2f)", wedgeUp ? "UP" : "DOWN",
