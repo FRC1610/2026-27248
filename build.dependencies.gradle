@@ -18,6 +18,7 @@ dependencies {
 
     implementation 'com.pedropathing:revhub:3.0.2'
     implementation 'com.pedropathing:tuning:1.0.3'
+    implementation 'com.pedropathing.ivy:pedro:1.1.1'
 
     // Panels dashboard (http://192.168.43.1:8001), incl. Limelight proxy and telemetry plugins.
     implementation 'com.bylazar:fullpanels:1.0.20'
