@@ -102,7 +102,7 @@ public final class Constants {
      * Stuck ball: indexer fed forward this long (s) with no shot (timed from the start of feeding,
      * and again from the ball passing the beam).
      */
-    public static final double INDEXER_STUCK_TIMEOUT_SEC = 0.4;
+    public static final double INDEXER_STUCK_TIMEOUT_SEC = 0.75;
     /** Stuck ball: indexer power (negative = reverse) used to back the ball up to the beam. */
     public static final double INDEXER_UNJAM_POWER = -1.0;
     /** Longest reverse (s) while waiting for the stuck ball to reach the beam. */
