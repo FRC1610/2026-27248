@@ -16,11 +16,12 @@ public final class Constants {
      */
     public static final double DRIVE_RAMP_UP_SECONDS = 0.4;
 
-    // ---- Starting heading: robot front faces the drivers' RIGHT at INIT (both alliances) ----
-    // Robot heading at INIT in the drivers' frame (CCW+, 0 = away from drivers), so right = -90.
-    // Added to the Pinpoint heading in Main 2026 until a Back/Share heading reset.
-    public static final double BLUE_START_HEADING_OFFSET_RAD = -Math.PI / 2.0;
-    public static final double RED_START_HEADING_OFFSET_RAD = -Math.PI / 2.0;
+    // ---- Starting heading: robot front faces the drivers' LEFT at INIT (both alliances), ----
+    // ---- with the back of the robot against the wall.                                    ----
+    // Robot heading at INIT in the drivers' frame (CCW+, 0 = away from drivers), so left = +90.
+    // Always added to the Pinpoint heading in Main 2026 (gamepad1 START re-zeroes the Pinpoint).
+    public static final double BLUE_START_HEADING_OFFSET_RAD = Math.PI / 2.0;
+    public static final double RED_START_HEADING_OFFSET_RAD = Math.PI / 2.0;
 
     // ---- Pinpoint odometry: forward pod's sideways offset and strafe pod's forward offset (in) ----
     public static final double FORWARD_POD_Y = -3.375;
@@ -33,7 +34,7 @@ public final class Constants {
     public static final int PIPELINE_BLUE_SCORING_SIDE = 3;
     public static final int PIPELINE_ALL_RED_TAGS = 8;
     public static final int PIPELINE_ALL_BLUE_TAGS = 9;
-    /** Default pipeline for each alliance, chosen from allianceButton (low = red, high = blue). */
+    /** Default pipeline for each alliance, chosen from allianceToggle (low = red, high = blue). */
     public static final int RED_VISION_PIPELINE = PIPELINE_ALL_RED_TAGS;
     public static final int BLUE_VISION_PIPELINE = PIPELINE_ALL_BLUE_TAGS;
     public static final int LIMELIGHT_POLL_RATE_HZ = 100;
@@ -46,9 +47,9 @@ public final class Constants {
 
     // ---- Flywheel: goBILDA 5203 Yellow Jacket 6000 RPM (1:1), direct drive to the flywheel ----
     public static final double FLYWHEEL_TICKS_PER_REV = 28.0;
-    public static final double FLYWHEEL_DEFAULT_RPM = 2575.0;
+    public static final double FLYWHEEL_DEFAULT_RPM = 2500.0;
     public static final double FLYWHEEL_MAX_RPM = 6000.0;
-    public static final double FLYWHEEL_RPM_STEP = 100.0;
+    public static final double FLYWHEEL_RPM_STEP = 25.0;
     /**
      * Flywheel velocity PIDF gains (hub units) found with Launcher Tuning. Only applied when
      * FLYWHEEL_USE_TUNED_PIDF is true; otherwise the hub's default gains are used.
@@ -68,13 +69,53 @@ public final class Constants {
     // ---- Indexer (values from the original TestMode) ----
     public static final double INDEXER_TICKS_PER_REV = 103.6;
     public static final double INDEXER_MAX_RPM = 1620.0;
-    public static final double INDEXER_DEFAULT_SPEED_PERCENT = 75.0;
+    /** Feed speed (shooting). Lowered from 75 after the 2026-11-22 practice. */
+    public static final double INDEXER_DEFAULT_SPEED_PERCENT = 70.0;
+    /**
+     * Loading speed (% of INDEXER_MAX_RPM) while the intake brings a ball up to indexBeam1. Kept
+     * low so the ball stops at the beam (the start of the indexer path) instead of coasting past.
+     * Not changed by the d-pad.
+     */
+    public static final double INDEXER_LOAD_SPEED_PERCENT = 40.0;
     public static final double INDEXER_SPEED_STEP_PERCENT = 5.0;
     /**
      * The indexer may only run forward while the flywheel is commanded on and measures at least
      * this speed. Reverse is always allowed.
      */
     public static final double INDEXER_MIN_FLYWHEEL_RPM = 2000.0;
+
+    // ---- Shoot sequence and stuck-ball recovery in Main 2026 (ShootSequence) ----
+    /** false = Main 2026 never reverses/pushes a stuck ball automatically. */
+    public static final boolean INDEXER_STUCK_RECOVERY_ENABLED = true;
+    /** A shot is detected when the flywheel falls this far below its setpoint (RPM). */
+    public static final double SHOT_DROP_RPM = 150.0;
+    /** Shot detection (re-)arms once the flywheel is back within this of its setpoint (RPM). */
+    public static final double SHOT_REARM_RPM = 100.0;
+    /**
+     * The next ball is fed once the flywheel is back within this far below its setpoint (RPM)
+     * after a shot ("wait for recovery"; same as the green-light tolerance).
+     */
+    public static final double SHOOT_READY_TOLERANCE_RPM = 50.0;
+    /** Intake power while the shoot sequence loads the next ball. */
+    public static final double SHOOT_INTAKE_POWER = 1.0;
+    /**
+     * Stuck ball: indexer fed forward this long (s) with no shot (timed from the start of feeding,
+     * and again from the ball passing the beam).
+     */
+    public static final double INDEXER_STUCK_TIMEOUT_SEC = 0.75;
+    /** Stuck ball: indexer power (negative = reverse) used to back the ball up to the beam. */
+    public static final double INDEXER_UNJAM_POWER = -1.0;
+    /** Longest reverse (s) while waiting for the stuck ball to reach the beam. */
+    public static final double INDEXER_STUCK_REVERSE_MAX_SEC = 1.0;
+    /** Stuck ball: indexer power used to push the ball through after reversing (100%). */
+    public static final double INDEXER_STUCK_PUSH_POWER = 1.0;
+    /** Longest push (s) with no shot before reversing and pushing again. */
+    public static final double INDEXER_STUCK_PUSH_MAX_SEC = 1.5;
+    /**
+     * Reverse-and-push attempts allowed on one ball before Main 2026 stops the indexer and shows
+     * "STUCK" (instead of looping). Cleared by a shot or releasing shoot (gamepad2 A).
+     */
+    public static final int INDEXER_MAX_UNJAMS_PER_BALL = 3;
 
     // ---- Indexer beam sensor (indexBeam1) ----
     /**
@@ -93,16 +134,43 @@ public final class Constants {
     public static final int PRISM_ARTBOARD_BLUE = 2;          // blue snakes (blue alliance)
     public static final int PRISM_ARTBOARD_BALL_SPINUP = 3;   // purple snakes
     public static final int PRISM_ARTBOARD_BALL_READY = 4;    // green snakes
+    public static final int PRISM_ARTBOARD_SHOOTING = 5;      // police lights (shoot command)
     /** LEDs in the chain (indexes 0 to PRISM_LED_COUNT - 1); every animation covers all of them. */
     public static final int PRISM_LED_COUNT = 48;
-    /** LED brightness (0-100) for all artboards. */
+    /** LED brightness (0-100) for the snake artboards. */
     public static final int PRISM_BRIGHTNESS = 50;
+    /** LED brightness (0-100) for the police lights shown while the shoot command runs. */
+    public static final int PRISM_SHOOTING_BRIGHTNESS = 50;
     /** Snake speed (0-1) for all artboards. */
     public static final float PRISM_SNAKE_SPEED = 0.3f;
     /** LEDs between consecutive snakes on all artboards. */
     public static final int PRISM_SNAKE_SPACING = 4;
     /** Flywheel counts as "at speed" (green) within this many RPM of its setpoint. */
     public static final double LIGHTS_FLYWHEEL_READY_TOLERANCE_RPM = 50.0;
+
+    // ---- Heading backup: Control Hub IMU ("imu") when the Pinpoint fails (HeadingFusion) ----
+    /**
+     * Control Hub mounting: logo facing the robot's LEFT, USB ports UP, then leaned back this many
+     * degrees: top (USB) tipped in toward the robot's center, bottom tipped out to the left, so
+     * the logo face tilts upward (rotation about the robot's forward axis).
+     * Check: on a level robot, Panels "IMU pitch/roll" should both read about 0.
+     */
+    public static final double CONTROL_HUB_LEAN_BACK_DEG = 15.0;
+    /**
+     * false = ignore the IMU: Pinpoint only, and robot-centric driving if it fails. Use this if
+     * the IMU heading turns out wrong (e.g. mounting not as described above).
+     */
+    public static final boolean HEADING_IMU_BACKUP_ENABLED = true;
+    /** Pinpoint heading more than this far (deg) from the IMU's = Pinpoint reset or glitch. */
+    public static final double HEADING_JUMP_DEG = 15.0;
+    /** A distrusted Pinpoint must agree with the IMU within this (deg)... */
+    public static final double HEADING_AGREE_DEG = 3.0;
+    /** ...for this many loops in a row before it is used again. */
+    public static final int PINPOINT_RETRUST_LOOPS = 25;
+
+    // ---- Start position toggle (startPositionToggle digital input) ----
+    /** startPositionToggle reading (getState()) that means the Audience start: true (HIGH). */
+    public static final boolean START_POSITION_AUDIENCE_STATE = true;
 
     // ---- Driver controls ----
     public static final double TRIGGER_DEADBAND = 0.05;

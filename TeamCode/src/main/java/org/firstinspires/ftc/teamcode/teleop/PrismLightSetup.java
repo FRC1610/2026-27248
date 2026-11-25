@@ -21,7 +21,7 @@ public class PrismLightSetup extends LinearOpMode {
     private static final String[] NAMES = {
             "0: Power on / idle (yellow snakes)", "1: Red alliance (red snakes)",
             "2: Blue alliance (blue snakes)", "3: Ball loaded, spinning up (purple snakes)",
-            "4: Ball loaded, at speed (green snakes)"};
+            "4: Ball loaded, at speed (green snakes)", "5: Shooting (police lights)"};
 
     @Override
     public void runOpMode() throws InterruptedException {
@@ -29,9 +29,9 @@ public class PrismLightSetup extends LinearOpMode {
 
         telemetry.addData("Prism device ID (3 = OK)", prism.getDeviceID());
         telemetry.addData("Firmware", prism.getFirmwareVersionString());
-        telemetry.addLine("After START: A = save robot Artboards 0-4 and set yellow as power-on.");
+        telemetry.addLine("After START: A = save robot Artboards 0-5 and set yellow as power-on.");
         telemetry.addLine("D-pad left/right = preview Artboards.");
-        telemetry.addLine("This overwrites Artboards 0-4 on the Prism.");
+        telemetry.addLine("This overwrites Artboards 0-5 on the Prism.");
         telemetry.update();
 
         waitForStart();
@@ -44,7 +44,7 @@ public class PrismLightSetup extends LinearOpMode {
                 telemetry.update();
                 RobotLights.saveArtboards(prism);
                 preview = 0;
-                status = "Saved Artboards 0-4; yellow (0) plays at power-on.";
+                status = "Saved Artboards 0-5; yellow (0) plays at power-on.";
             }
             if (gamepad1.dpadRightWasPressed()) {
                 preview = (preview + 1) % NAMES.length;

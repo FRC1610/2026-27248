@@ -38,7 +38,7 @@ public class SingleGamepadTest extends LinearOpMode {
             telemetry.update();
 
             // INIT loop instead of waitForStart() so the lights (and Limelight pipeline) follow
-            // allianceButton until START.
+            // allianceToggle until START.
             while (opModeInInit()) {
                 robot.selectAllianceLimelightPipeline();
                 robot.lights.showAlliance(robot.isRedAlliance());
@@ -131,8 +131,9 @@ public class SingleGamepadTest extends LinearOpMode {
                 telemetry.addData("Flywheel setpoint (RPM)", "%.0f", flywheelSetpointRpm);
                 double flywheelRpm = robot.getFlywheelRpm();
                 // Lights: alliance color, or pulsing orange/green with a ball loaded.
-                robot.lights.update(robot.isRedAlliance(), robot.isBallAtIndexer(), flywheelOn,
-                        flywheelSetpointRpm, flywheelRpm);
+                // No shoot command here, so never the police (shooting) lights.
+                robot.lights.update(robot.isRedAlliance(), false, robot.isBallAtIndexer(),
+                        flywheelOn, flywheelSetpointRpm, flywheelRpm);
                 telemetry.addData("Lights", robot.lights.isPresent()
                         ? String.valueOf(robot.lights.getState()) : "no prism configured");
                 telemetry.addData("Flywheel current (RPM)", "%.0f", flywheelRpm);

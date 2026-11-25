@@ -2,24 +2,39 @@
 
 Select **Main 2026** on the Driver Station. Gamepad 1 (driver) left stick controls
 field-centric translation; right stick X controls rotation. Click the left stick
-to toggle between full and half speed. Press **Back/Share** to make the robot's
-current facing the new field-centric forward (X/Y are kept).
+to toggle between full and half speed. If the odometry heading goes wrong, line the
+robot up as at the match start (back against the wall, front facing the drivers' left)
+and press **Start**:
+the Pinpoint heading is zeroed and the start offset applies again, as at INIT (X/Y are
+kept). Back/Share is not used.
 
 Gamepad 2 (operator) runs the mechanisms:
 
 | Control | Action |
 | --- | --- |
-| RT / LT | Intake forward / reverse (proportional) |
-| B | Indexer on/off |
-| D-pad right / left | Indexer speed +/-5% |
-| A | Flywheel on/off |
+| RT / LT | Intake forward / reverse (proportional). RT also runs the indexer until a ball reaches the beam |
+| Hold A | **Shoot**: feed one ball at a time (flywheel must be on) |
+| D-pad right / left | Indexer feed speed +/-5% (default 70%; loading stays at 40%) |
+| B | Flywheel on/off (off also cancels shoot until A is released) |
 | X | Turret tracking on/off |
 | D-pad up / down | Flywheel setpoint +/-100 RPM |
 | Y | Flower wedge up/down |
 | Hold RB / LB | **Emergency**: intake and indexer full forward / reverse |
 | Right stick X | Manual turret while tracking is on |
 
-A ball newly reaching the indexer beam turns both the flywheel and turret tracking on.
+The flywheel and turret tracking only turn on from the buttons (a ball at the beam no longer
+turns them on).
+
+**Loading:** while the intake runs forward, the indexer runs slowly
+(`INDEXER_LOAD_SPEED_PERCENT`, 40%) until `indexBeam1` sees a ball, then stops with the ball
+staged at the beam. The intake keeps following RT.
+
+**Shoot sequence (hold A, `ShootSequence`):** wait until the flywheel is back within
+`SHOOT_READY_TOLERANCE_RPM` of its setpoint, feed the staged ball with the intake stopped
+until the shot is detected (flywheel dip), then run the intake and indexer until the next ball
+reaches the beam, and repeat. If no shot follows within `INDEXER_STUCK_TIMEOUT_SEC`, the
+indexer reverses until the ball is back at the beam, then pushes at 100% until it shoots
+(up to `INDEXER_MAX_UNJAMS_PER_BALL` tries, then STUCK until A is released).
 
 The turret auto-aims at the selected alliance pipeline's AprilTag target using the
 turret-mounted Limelight (`tx`) plus Pinpoint heading changes (`TurretTracker`). When the
@@ -40,7 +55,8 @@ Configure these exact hardware names on the Robot Controller:
 | `leftFront`, `leftBack` | Drive motors, forward direction |
 | `rightFront`, `rightBack` | Drive motors, reversed direction |
 | `pinpoint` | goBILDA Pinpoint odometry computer |
-| `allianceButton` | Digital input; low = red, high = blue |
+| `allianceToggle` | Digital input (Expansion Hub digital 0); low = red, high = blue |
+| `startPositionToggle` | Digital input (Expansion Hub digital 1); high = Audience, low = Scoring (`START_POSITION_AUDIENCE_STATE`). Shown on telemetry only for now |
 | `limelight` | Limelight 3A (Ethernet Device after a robot configuration scan) |
 
 All drive motors use `RUN_USING_ENCODER` and brake at zero power.
@@ -49,9 +65,10 @@ The forward pod sideways offset is **-3.375 inches**; the strafe pod forward
 offset is **5.5625 inches**. These are passed to `setOffsets` in that order.
 
 Initialization resets position and calibrates the Pinpoint IMU: keep the robot
-stationary. Start with the same sideways orientation as last year: blue robot
-front points right, red robot front points left relative to the drivers. The
-alliance input applies +90 degrees for blue or -90 degrees for red.
+stationary. On both alliances, start with the back of the robot against the wall and
+its front facing the drivers' left: `BLUE_START_HEADING_OFFSET_RAD` and
+`RED_START_HEADING_OFFSET_RAD` are both +90 degrees and are added to the Pinpoint
+heading for field-centric driving.
 
 Configuration and drive math were reviewed against `RobotHardware.java`,
 `Competition.java`, `Testing/FieldCentricDriveTest.java`, and
@@ -60,7 +77,23 @@ Configuration and drive math were reviewed against `RobotHardware.java`,
 Pinpoint driver is used, with no additional libraries required.
 
 Motor powers are normalized to [-1, 1], and all drive motors stop when the
-OpMode exits or Pinpoint is not ready with a finite heading.
+OpMode exits.
+
+**Heading backup (`HeadingFusion`).** Main 2026 keeps driving if the Pinpoint fails:
+
+- Normally the Pinpoint heading is used. The Control Hub IMU (`imu`) is read every loop and
+  kept aligned with it.
+- If the Pinpoint stops reporting READY, a read fails, or its heading jumps more than
+  `HEADING_JUMP_DEG` (15) from the IMU's (e.g. it rebooted), the IMU heading takes over with no
+  jump. The Driver Station shows `!! Pinpoint lost - using IMU`. The code writes the correct
+  heading back to the Pinpoint and uses it again once it agrees with the IMU for
+  `PINPOINT_RETRUST_LOOPS` loops.
+- With neither, the robot drives **robot-centric** (`!! NO HEADING - robot-centric`).
+- Gamepad 1 Start still resets the heading, on the IMU alone if needed.
+- IMU mounting: logo facing left, USB up, leaned back 15 deg (top tipped in, bottom tipped
+  out to the left, so the logo face tilts upward; `CONTROL_HUB_LEAN_BACK_DEG`). **Check:** on a level robot, Panels "IMU pitch" and
+  "IMU roll" should both read about 0, and "IMU yaw" should follow "Pinpoint heading" when
+  the robot turns. If not, set `HEADING_IMU_BACKUP_ENABLED = false` until fixed.
 Wiring, wheel directions, pod tracking, and
 field-centric controls still require verification on the physical robot.
 
@@ -74,18 +107,19 @@ port's I2C bus as **goBILDA® Prism RGB LED Driver** named `prism`. The driver a
 
 Run **Prism Light Setup** (Test group) once and press A: it sets the strip length to 48 LEDs,
 saves these Artboards to the Prism and makes Artboard 0 play at power-on. They persist across
-power cycles. All animations are snakes (speed 0.3, 4 LEDs apart) at 50% brightness on
-LEDs 0-47.
+power cycles. Artboards 0-4 are snakes (speed 0.3, 4 LEDs apart) at 50% brightness;
+Artboard 5 is police lights at 50% (`PRISM_SHOOTING_BRIGHTNESS`). All cover LEDs 0-47.
 
 | Artboard | Lights | When |
 | --- | --- | --- |
 | 0 | Yellow snakes | Power on (played by the Prism itself); during the match with no ball loaded and the flywheel off |
-| 1 / 2 | Red / blue snakes | During INIT, from `allianceButton`; during the match with no ball loaded and the flywheel running |
+| 1 / 2 | Red / blue snakes | During INIT, from `allianceToggle`; during the match with no ball loaded and the flywheel running |
 | 3 | Purple snakes | Ball at the indexer beam, flywheel off or not within 50 RPM of its setpoint |
 | 4 | Green snakes | Ball at the indexer beam and flywheel within 50 RPM of its setpoint |
+| 5 | Police lights | Main 2026 shoot command running (GP2 A held, flywheel on); overrides 0-4 |
 
 Main 2026 and Single Gamepad Test only switch Artboards when the state changes. Saving an
-Artboard 0-4 with the Prism Configurator overwrites these; rerun Prism Light Setup to restore
+Artboard 0-5 with the Prism Configurator overwrites these; rerun Prism Light Setup to restore
 them. Without a `prism` in the configuration, the lights code does nothing.
 
 ## Limelight 3A
@@ -106,9 +140,10 @@ polling during initialization. Pipelines configured on the camera:
 | 8 | All Red tags (**red alliance default**) | `PIPELINE_ALL_RED_TAGS` |
 | 9 | All Blue tags (**blue alliance default**) | `PIPELINE_ALL_BLUE_TAGS` |
 
-`allianceButton` (low = red, high = blue) selects pipeline **8** or **9**, at INIT and
-whenever the button changes; requests are sent only when the selection changes.
+`allianceToggle` (low = red, high = blue) selects pipeline **8** or **9**, at INIT and
+whenever the toggle changes; requests are sent only when the selection changes.
 The camera must already have these pipelines configured in its web interface.
+Back up the pipeline files to `limelight-pipelines/` in this repository.
 
 To configure the camera, connect it to a computer, open Limelight Hardware
 Manager or `http://limelight.local:5801`, and set team number **27248**. Configure
@@ -117,10 +152,17 @@ the correct season's field map, enable **Full 3D**, and enter the measured camer
 position and orientation relative to the robot. Mount measurements and target
 settings must match the actual robot and field.
 
-TeleOp displays requested and actual pipeline, result age in milliseconds,
-target validity, tx/ty in degrees, target area, and the available field pose.
-Result age remains visible because a disconnected camera can leave an old
-result cached. Vision data is displayed only; driving continues to use Pinpoint.
+Main 2026 shows the **target distance** (inches) on the Driver Station: the floor
+distance from the camera to the largest visible AprilTag, from the Limelight's 3D
+solve (`RobotHardware.getTargetDistanceInches`). It reads "no target" without a
+valid, fresh result; the pipeline's AprilTag size must be set correctly. Pipeline,
+result age and tx/ty are in Panels only.
+
+**Driver Station screens:** INIT shows the alliance and start position from the two
+toggles. During the match it shows the flywheel (on/off, setpoint, actual RPM), target
+distance and tracking on/off, plus `!!` alerts only when they apply (heading backup in
+use, no heading, ball stuck, flywheel off while shooting, emergency, log not recording). Everything
+else is in Panels.
 Limelight polling stops in the OpMode's termination cleanup, including an early
 stop or initialization failure. Physical connectivity and detection have not
 been verified on hardware.
