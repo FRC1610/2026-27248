@@ -16,6 +16,10 @@ package org.firstinspires.ftc.teamcode;
  *       its setpoint after the previous shot), then run the indexer with the intake stopped
  *       until the shot is detected. With no ball, run the intake and indexer until the next ball
  *       is staged. Repeat.
+ *   <li><b>Intake nudge:</b> the beam can see a ball that isn't touching the indexer rollers
+ *       yet. While FEEDING or PUSHING with the ball still in the beam (not yet passed), the
+ *       intake is pulsed: SHOOT_NUDGE_DELAY_SEC off, SHOOT_NUDGE_PULSE_SEC on, repeating until
+ *       the ball leaves the beam ({@link #isIntakeNudging()}).
  *   <li><b>Shot:</b> the flywheel falling more than SHOT_DROP_RPM below its setpoint. Detection
  *       (re-)arms once the flywheel is back within SHOT_REARM_RPM, so spin-up does not count.
  *   <li><b>Stuck ball:</b> feeding for INDEXER_STUCK_TIMEOUT_SEC (from the start of feeding, or
@@ -60,6 +64,9 @@ public class ShootSequence {
     private int unjamsThisBall = 0;
     private int shots = 0;
     private int unjams = 0;
+    private double nudgeSec = 0;
+    private boolean intakeNudging = false;
+    private int nudges = 0;
 
     /**
      * @param recoveryEnabled    false = never reverse/push a stuck ball, just keep feeding
@@ -82,6 +89,32 @@ public class ShootSequence {
      */
     public State update(boolean beamBlocked, boolean shootActive, boolean intakeForward,
                         double setpointRpm, double actualRpm, double dtSec) {
+        State next = step(beamBlocked, shootActive, intakeForward, setpointRpm, actualRpm, dtSec);
+        updateNudge(beamBlocked, dtSec);
+        return next;
+    }
+
+    /**
+     * Intake nudge while the indexer feeds a ball that is still in the beam: off for
+     * SHOOT_NUDGE_DELAY_SEC (give the rollers a chance), then on for SHOOT_NUDGE_PULSE_SEC, repeat.
+     */
+    private void updateNudge(boolean beamBlocked, double dtSec) {
+        boolean ballNotOnRollers = (state == State.FEEDING || state == State.PUSHING)
+                && beamBlocked && !ballPending;
+        if (!ballNotOnRollers) {
+            nudgeSec = 0;
+            intakeNudging = false;
+            return;
+        }
+        nudgeSec += dtSec;
+        double cycle = Constants.SHOOT_NUDGE_DELAY_SEC + Constants.SHOOT_NUDGE_PULSE_SEC;
+        boolean nudgeNow = nudgeSec % cycle >= Constants.SHOOT_NUDGE_DELAY_SEC;
+        if (nudgeNow && !intakeNudging) nudges++;
+        intakeNudging = nudgeNow;
+    }
+
+    private State step(boolean beamBlocked, boolean shootActive, boolean intakeForward,
+                       double setpointRpm, double actualRpm, double dtSec) {
         // A ball moved past the beam into the indexer.
         if (beamWasBlocked && !beamBlocked && !ballPending) {
             ballPending = true;
@@ -210,5 +243,15 @@ public class ShootSequence {
     /** Reverse/push attempts on the current ball. */
     public int getUnjamsThisBall() {
         return unjamsThisBall;
+    }
+
+    /** True while the intake should pulse forward to push a staged ball onto the rollers. */
+    public boolean isIntakeNudging() {
+        return intakeNudging;
+    }
+
+    /** Total intake nudge pulses this OpMode. */
+    public int getNudges() {
+        return nudges;
     }
 }

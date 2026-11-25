@@ -32,7 +32,10 @@ staged at the beam. The intake keeps following RT.
 **Shoot sequence (hold A, `ShootSequence`):** wait until the flywheel is back within
 `SHOOT_READY_TOLERANCE_RPM` of its setpoint, feed the staged ball with the intake stopped
 until the shot is detected (flywheel dip), then run the intake and indexer until the next ball
-reaches the beam, and repeat. If no shot follows within `INDEXER_STUCK_TIMEOUT_SEC`, the
+reaches the beam, and repeat. If the beam still sees the ball while feeding (it may not be
+touching the indexer rollers yet), the intake pulses forward (`SHOOT_NUDGE_DELAY_SEC` off,
+`SHOOT_NUDGE_PULSE_SEC` on, repeating) until the ball leaves the beam. If no shot follows
+within `INDEXER_STUCK_TIMEOUT_SEC`, the
 indexer reverses until the ball is back at the beam, then pushes at 100% until it shoots
 (up to `INDEXER_MAX_UNJAMS_PER_BALL` tries, then STUCK until A is released).
 
