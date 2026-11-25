@@ -47,9 +47,9 @@ public final class Constants {
 
     // ---- Flywheel: goBILDA 5203 Yellow Jacket 6000 RPM (1:1), direct drive to the flywheel ----
     public static final double FLYWHEEL_TICKS_PER_REV = 28.0;
-    public static final double FLYWHEEL_DEFAULT_RPM = 2575.0;
+    public static final double FLYWHEEL_DEFAULT_RPM = 2500.0;
     public static final double FLYWHEEL_MAX_RPM = 6000.0;
-    public static final double FLYWHEEL_RPM_STEP = 100.0;
+    public static final double FLYWHEEL_RPM_STEP = 25.0;
     /**
      * Flywheel velocity PIDF gains (hub units) found with Launcher Tuning. Only applied when
      * FLYWHEEL_USE_TUNED_PIDF is true; otherwise the hub's default gains are used.
