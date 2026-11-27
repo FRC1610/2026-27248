@@ -42,7 +42,7 @@ public class RobotHardware {
     private DcMotorEx intakeLeft;
     private DcMotorEx intakeRight;
     private DcMotorEx indexer;
-    private DcMotorEx flywheel;
+    public DcMotorEx flywheel;
     private PIDFCoefficients flywheelPidf;
     /** Last flywheel setpoint passed to setFlywheelRpm (0 = off). */
     private double flywheelTargetRpm = 0;
