@@ -70,7 +70,7 @@ public final class Constants {
     public static final double INDEXER_TICKS_PER_REV = 103.6;
     public static final double INDEXER_MAX_RPM = 1620.0;
     /** Feed speed (shooting). Lowered from 75 after the 2026-11-22 practice. */
-    public static final double INDEXER_DEFAULT_SPEED_PERCENT = 70.0;
+    public static final double INDEXER_DEFAULT_SPEED_PERCENT = 80.0;
     /**
      * Loading speed (% of INDEXER_MAX_RPM) while the intake brings a ball up to indexBeam1. Kept
      * low so the ball stops at the beam (the start of the indexer path) instead of coasting past.
@@ -98,6 +98,15 @@ public final class Constants {
     public static final double SHOOT_READY_TOLERANCE_RPM = 50.0;
     /** Intake power while the shoot sequence loads the next ball. */
     public static final double SHOOT_INTAKE_POWER = 1.0;
+    /**
+     * Intake nudge: a ball can block indexBeam1 without touching the indexer rollers yet. While
+     * feeding (or pushing) with the ball still in the beam, after SHOOT_NUDGE_DELAY_SEC the intake
+     * runs at SHOOT_NUDGE_INTAKE_POWER for SHOOT_NUDGE_PULSE_SEC to push it onto the rollers;
+     * repeated (delay, pulse, delay, ...) until the ball leaves the beam. Starting values; tune.
+     */
+    public static final double SHOOT_NUDGE_DELAY_SEC = 0.25;
+    public static final double SHOOT_NUDGE_PULSE_SEC = 0.15;
+    public static final double SHOOT_NUDGE_INTAKE_POWER = 1.0;
     /**
      * Stuck ball: indexer fed forward this long (s) with no shot (timed from the start of feeding,
      * and again from the ball passing the beam).

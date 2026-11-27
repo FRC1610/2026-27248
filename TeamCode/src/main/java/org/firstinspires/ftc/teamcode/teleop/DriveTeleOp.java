@@ -283,8 +283,13 @@ public class DriveTeleOp extends LinearOpMode {
                         case FEEDING:
                             robot.setIndexerRpm(indexerTargetRpm);
                             indexerCmd = indexerForwardAllowed ? indexerTargetRpm : 0;
-                            intakePower = 0;
-                            indexerStatus = indexerForwardAllowed ? "FEEDING" : "FEEDING (BLOCKED)";
+                            // Intake off, except short pulses that push a ball still sitting in
+                            // the beam onto the indexer rollers.
+                            intakePower = shootSequence.isIntakeNudging()
+                                    ? Constants.SHOOT_NUDGE_INTAKE_POWER : 0;
+                            indexerStatus = !indexerForwardAllowed ? "FEEDING (BLOCKED)"
+                                    : shootSequence.isIntakeNudging() ? "FEEDING (NUDGE)"
+                                    : "FEEDING";
                             break;
                         case REVERSING:
                             robot.setIndexerPower(Constants.INDEXER_UNJAM_POWER);
@@ -296,8 +301,10 @@ public class DriveTeleOp extends LinearOpMode {
                             robot.setIndexerPower(Constants.INDEXER_STUCK_PUSH_POWER);
                             indexerCmd = indexerForwardAllowed
                                     ? Constants.INDEXER_STUCK_PUSH_POWER : 0;
-                            intakePower = 0;
-                            indexerStatus = "STUCK - PUSHING 100%";
+                            intakePower = shootSequence.isIntakeNudging()
+                                    ? Constants.SHOOT_NUDGE_INTAKE_POWER : 0;
+                            indexerStatus = shootSequence.isIntakeNudging()
+                                    ? "STUCK - PUSHING 100% (NUDGE)" : "STUCK - PUSHING 100%";
                             break;
                         case WAITING:
                             robot.setIndexerPower(0);
@@ -412,6 +419,8 @@ public class DriveTeleOp extends LinearOpMode {
                 panels.addData("Shots", shootSequence.getShots());
                 panels.addData("Unjams", shootSequence.getUnjams());
                 panels.addData("Unjams on this ball", shootSequence.getUnjamsThisBall());
+                panels.addData("Intake nudging", shootSequence.isIntakeNudging() ? 1.0 : 0.0);
+                panels.addData("Intake nudges", shootSequence.getNudges());
                 panels.addData("Intake power", intakePower);
                 panels.addData("Lights", String.valueOf(robot.lights.getState()));
                 panels.addData("Flower wedge", wedgeUp ? "UP" : "DOWN");
