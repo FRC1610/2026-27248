@@ -45,12 +45,14 @@ public class TurretTracker {
         WAITING_AT_LIMIT,
         /** Operator is turning the turret with the stick. */
         MANUAL,
-        /** Limelight not sending data: back at TURRET_HOLD_POSITION, waiting for it to return. */
+        /** Limelight not sending data: back at the home position, waiting for it to return. */
         LIMELIGHT_LOST
     }
 
     private final double minAngleDeg;
     private final double maxAngleDeg;
+    /** Servo position limelightLost() returns to (TURRET_HOLD_POSITION unless given). */
+    private final double homePosition;
 
     private double commandedDeg;
     private double aimDeg;
@@ -66,6 +68,16 @@ public class TurretTracker {
 
     /** @param startPosition servo position the turret is at when tracking starts */
     public TurretTracker(double startPosition) {
+        this(startPosition, Constants.TURRET_HOLD_POSITION);
+    }
+
+    /**
+     * @param startPosition servo position the turret is at when tracking starts
+     * @param homePosition  servo position to return to if the Limelight stops sending data
+     *                      (e.g. a launch's TurretDirection)
+     */
+    public TurretTracker(double startPosition, double homePosition) {
+        this.homePosition = homePosition;
         double a = positionToAngle(Constants.TURRET_MIN_POSITION);
         double b = positionToAngle(Constants.TURRET_MAX_POSITION);
         minAngleDeg = Math.min(a, b);
@@ -96,12 +108,12 @@ public class TurretTracker {
 
     /**
      * Call instead of {@link #update} while the Limelight is not sending data. Forgets the
-     * target and returns the servo position for TURRET_HOLD_POSITION (the INIT position, kept
-     * within the limits). When data returns, tracking starts again from there.
+     * target and returns the servo position for the home position (TURRET_HOLD_POSITION, the
+     * INIT position, unless another was given; kept within the limits). When data returns,
+     * tracking starts again from there.
      */
     public double limelightLost() {
-        commandedDeg = clamp(positionToAngle(Constants.TURRET_HOLD_POSITION),
-                minAngleDeg, maxAngleDeg);
+        commandedDeg = clamp(positionToAngle(homePosition), minAngleDeg, maxAngleDeg);
         aimDeg = commandedDeg;
         hasAim = false;
         visionHoldoffSec = 0;

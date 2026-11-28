@@ -149,6 +149,19 @@ public final class Constants {
      */
     public static final int UPTAKE_MAX_UNJAMS_PER_BALL = 3;
 
+    // ---- Autonomous launch (AutoLauncher) ----
+    /**
+     * Out of balls: if the launch sequence has been loading (intake + uptake running) this long
+     * (s) without indexBeam1 seeing the next ball, the robot is treated as empty and the launch
+     * ends early. Must cover the slowest intake-to-beam trip. Starting value; tune.
+     */
+    public static final double AUTO_NO_BALL_TIMEOUT_SEC = 1.0;
+    /**
+     * Longest wait (s) for the turret to lock on the target (after swinging to the launch's start
+     * direction) before launching anyway from where it points.
+     */
+    public static final double AUTO_AIM_TIMEOUT_SEC = 1.5;
+
     // ---- Uptake beam sensor (indexBeam1) ----
     /**
      * indexBeam1 reading (DigitalChannel.getState()) that means a ball is blocking the beam:
