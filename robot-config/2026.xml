@@ -5,7 +5,7 @@
             <goBILDA5202SeriesMotor name="rightFront" port="0" />
             <goBILDA5202SeriesMotor name="rightBack" port="1" />
             <goBILDA5202SeriesMotor name="intakeRight" port="2" />
-            <goBILDA5202SeriesMotor name="indexer" port="3" />
+            <goBILDA5202SeriesMotor name="uptake" port="3" />
             <Servo name="flowerWedgeRight" port="0" />
             <ServoFullRange name="turret" port="1" />
             <DigitalDevice name="allianceToggle" port="0" />

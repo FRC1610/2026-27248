@@ -12,32 +12,47 @@ Gamepad 2 (operator) runs the mechanisms:
 
 | Control | Action |
 | --- | --- |
-| RT / LT | Intake forward / reverse (proportional). RT also runs the indexer until a ball reaches the beam |
-| Hold A | **Shoot**: feed one ball at a time (flywheel must be on) |
-| D-pad right / left | Indexer feed speed +/-5% (default 70%; loading stays at 40%) |
+| RT / LT | Intake forward / reverse (proportional). RT also runs the uptake until a ball reaches the beam |
+| Hold A | **Shoot**: feed one ball at a time; pressing A turns the flywheel on if it is off |
+| D-pad right / left | Uptake feed speed +/-5% (default 70%; loading stays at 40%) |
 | B | Flywheel on/off (off also cancels shoot until A is released) |
 | X | Turret tracking on/off |
 | D-pad up / down | Flywheel setpoint +/-100 RPM |
 | Y | Flower wedge up/down |
-| Hold RB / LB | **Emergency**: intake and indexer full forward / reverse |
+| Hold RB / LB | **Emergency**: intake and uptake full forward / reverse |
 | Right stick X | Manual turret while tracking is on |
 
 The flywheel and turret tracking only turn on from the buttons (a ball at the beam no longer
 turns them on).
 
-**Loading:** while the intake runs forward, the indexer runs slowly
-(`INDEXER_LOAD_SPEED_PERCENT`, 40%) until `indexBeam1` sees a ball, then stops with the ball
+**Loading:** while the intake runs forward, the uptake runs slowly
+(`UPTAKE_LOAD_SPEED_PERCENT`, 40%) until `indexBeam1` sees a ball, then stops with the ball
 staged at the beam. The intake keeps following RT.
 
-**Shoot sequence (hold A, `ShootSequence`):** wait until the flywheel is back within
+**Launch sequence (hold A, `LaunchSequence`):** wait until the flywheel is back within
 `SHOOT_READY_TOLERANCE_RPM` of its setpoint, feed the staged ball with the intake stopped
-until the shot is detected (flywheel dip), then run the intake and indexer until the next ball
+until the shot is detected (flywheel dip), then run the intake and uptake until the next ball
 reaches the beam, and repeat. If the beam still sees the ball while feeding (it may not be
-touching the indexer rollers yet), the intake pulses forward (`SHOOT_NUDGE_DELAY_SEC` off,
+touching the uptake rollers yet), the intake pulses forward (`SHOOT_NUDGE_DELAY_SEC` off,
 `SHOOT_NUDGE_PULSE_SEC` on, repeating) until the ball leaves the beam. If no shot follows
-within `INDEXER_STUCK_TIMEOUT_SEC`, the
-indexer reverses until the ball is back at the beam, then pushes at 100% until it shoots
-(up to `INDEXER_MAX_UNJAMS_PER_BALL` tries, then STUCK until A is released).
+within `UPTAKE_STUCK_TIMEOUT_SEC`, the
+uptake reverses until the ball is back at the beam, then pushes at 100% until it shoots
+(up to `UPTAKE_MAX_UNJAMS_PER_BALL` tries, then STUCK until A is released).
+
+**Shoot tuning (Panels > Configurables > `ShootTuning`):** flywheel RPM and PIDF (applied
+to the motor as soon as they change), uptake feed/load speed, intake power, shot
+detection, ready tolerance, `FEED_DELAY_AFTER_READY_SEC`, `LOAD_DELAY_AFTER_SHOT_SEC`,
+nudge timing and stuck-ball recovery. Defaults come from `Constants`; edits last until the
+Robot Controller app restarts, and the Driver Station shows `!! Panels tuning active` while
+any value differs from `Constants`. Copy good values into `Constants` to keep them.
+
+Each run of Main 2026 writes, in `/sdcard/FIRST/data/`:
+- `main_<time>.csv`: every loop.
+- `shoot_events_<time>.csv`: every shoot-sequence step (burst start/end, state changes,
+  beam blocked/clear, shot, flywheel ready, nudge, unjam, Panels value changes).
+- `shots_<time>.csv`: one row per shot with wait, feed-to-beam-clear, beam-to-shot,
+  interval, RPM at feed, lowest RPM, recovery time, time to load the next ball and the
+  tuning values in use.
 
 The turret auto-aims at the selected alliance pipeline's AprilTag target using the
 turret-mounted Limelight (`tx`) plus Pinpoint heading changes (`TurretTracker`). When the
@@ -117,8 +132,8 @@ Artboard 5 is police lights at 50% (`PRISM_SHOOTING_BRIGHTNESS`). All cover LEDs
 | --- | --- | --- |
 | 0 | Yellow snakes | Power on (played by the Prism itself); during the match with no ball loaded and the flywheel off |
 | 1 / 2 | Red / blue snakes | During INIT, from `allianceToggle`; during the match with no ball loaded and the flywheel running |
-| 3 | Purple snakes | Ball at the indexer beam, flywheel off or not within 50 RPM of its setpoint |
-| 4 | Green snakes | Ball at the indexer beam and flywheel within 50 RPM of its setpoint |
+| 3 | Purple snakes | Ball at the uptake beam, flywheel off or not within 50 RPM of its setpoint |
+| 4 | Green snakes | Ball at the uptake beam and flywheel within 50 RPM of its setpoint |
 | 5 | Police lights | Main 2026 shoot command running (GP2 A held, flywheel on); overrides 0-4 |
 
 Main 2026 and Single Gamepad Test only switch Artboards when the state changes. Saving an

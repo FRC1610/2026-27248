@@ -66,40 +66,60 @@ public final class Constants {
     public static final double FLYWHEEL_PIDF_D = 0.0;
     public static final double FLYWHEEL_PIDF_F = 22.5;
 
-    // ---- Indexer (values from the original TestMode) ----
-    public static final double INDEXER_TICKS_PER_REV = 103.6;
-    public static final double INDEXER_MAX_RPM = 1620.0;
-    /** Feed speed (shooting). Lowered from 75 after the 2026-11-22 practice. */
-    public static final double INDEXER_DEFAULT_SPEED_PERCENT = 80.0;
+    // ---- Uptake (values from the original TestMode) ----
+    public static final double UPTAKE_TICKS_PER_REV = 103.6;
+    public static final double UPTAKE_MAX_RPM = 1620.0;
     /**
-     * Loading speed (% of INDEXER_MAX_RPM) while the intake brings a ball up to indexBeam1. Kept
-     * low so the ball stops at the beam (the start of the indexer path) instead of coasting past.
-     * Not changed by the d-pad.
+     * Feed speed (shooting). 2026-11-27 shoot tuning: 80 -> 90 roughly halved the 4-ball time;
+     * 95 shaved a little more (feed to shot ~0.47 s).
      */
-    public static final double INDEXER_LOAD_SPEED_PERCENT = 40.0;
-    public static final double INDEXER_SPEED_STEP_PERCENT = 5.0;
+    public static final double UPTAKE_DEFAULT_SPEED_PERCENT = 95.0;
     /**
-     * The indexer may only run forward while the flywheel is commanded on and measures at least
+     * Loading speed (% of UPTAKE_MAX_RPM) while the intake brings a ball up to indexBeam1. Kept
+     * low so the ball stops at the beam (the start of the uptake path) instead of coasting past.
+     * Not changed by the d-pad. 55 (2026-11-27): 50 loaded in ~0.15-0.5 s; 60 once carried a
+     * ball straight through the beam into the flywheel (back-to-back shot).
+     */
+    public static final double UPTAKE_LOAD_SPEED_PERCENT = 55.0;
+    public static final double UPTAKE_SPEED_STEP_PERCENT = 5.0;
+    /**
+     * The uptake may only run forward while the flywheel is commanded on and measures at least
      * this speed. Reverse is always allowed.
      */
-    public static final double INDEXER_MIN_FLYWHEEL_RPM = 2000.0;
+    public static final double UPTAKE_MIN_FLYWHEEL_RPM = 2000.0;
 
-    // ---- Shoot sequence and stuck-ball recovery in Main 2026 (ShootSequence) ----
+    // ---- Shoot sequence and stuck-ball recovery in Main 2026 (LaunchSequence) ----
     /** false = Main 2026 never reverses/pushes a stuck ball automatically. */
-    public static final boolean INDEXER_STUCK_RECOVERY_ENABLED = true;
-    /** A shot is detected when the flywheel falls this far below its setpoint (RPM). */
-    public static final double SHOT_DROP_RPM = 150.0;
-    /** Shot detection (re-)arms once the flywheel is back within this of its setpoint (RPM). */
-    public static final double SHOT_REARM_RPM = 100.0;
+    public static final boolean UPTAKE_STUCK_RECOVERY_ENABLED = true;
+    /**
+     * A shot is detected when the flywheel falls this far below its setpoint (RPM). Logged dips
+     * are 270-400 RPM, so 200 still catches every shot.
+     */
+    public static final double SHOT_DROP_RPM = 200.0;
+    /**
+     * Shot detection (re-)arms once the flywheel is back within this of its setpoint (RPM). Must
+     * be below SHOT_DROP_RPM, and the feed can't start before re-arming, so this also caps
+     * SHOOT_READY_TOLERANCE_RPM.
+     */
+    public static final double SHOT_REARM_RPM = 150.0;
     /**
      * The next ball is fed once the flywheel is back within this far below its setpoint (RPM)
-     * after a shot ("wait for recovery"; same as the green-light tolerance).
+     * after a shot. 150 (2026-11-27, "feed early"): the ball takes ~0.45 s from feed start to
+     * the flywheel, which finishes recovering meanwhile; at 50 the contact RPM was always within
+     * -57/+71 of setpoint. Check contact_underspeed_rpm in shots_*.csv.
      */
-    public static final double SHOOT_READY_TOLERANCE_RPM = 50.0;
+    public static final double SHOOT_READY_TOLERANCE_RPM = 150.0;
     /** Intake power while the shoot sequence loads the next ball. */
     public static final double SHOOT_INTAKE_POWER = 1.0;
     /**
-     * Intake nudge: a ball can block indexBeam1 without touching the indexer rollers yet. While
+     * Pre-stage: when shoot starts with a ball already past the beam (coasted into the uptake
+     * while loading), first reverse it back to the beam (UPTAKE_UNJAM_POWER, at most
+     * UPTAKE_STUCK_REVERSE_MAX_SEC), then feed it normally. A ball starting from rest inside the
+     * uptake jammed in ~half of all bursts (2026-11-27); a running start from the beam works.
+     */
+    public static final boolean SHOOT_PRESTAGE_PENDING_BALL = true;
+    /**
+     * Intake nudge: a ball can block indexBeam1 without touching the uptake rollers yet. While
      * feeding (or pushing) with the ball still in the beam, after SHOOT_NUDGE_DELAY_SEC the intake
      * runs at SHOOT_NUDGE_INTAKE_POWER for SHOOT_NUDGE_PULSE_SEC to push it onto the rollers;
      * repeated (delay, pulse, delay, ...) until the ball leaves the beam. Starting values; tune.
@@ -108,25 +128,28 @@ public final class Constants {
     public static final double SHOOT_NUDGE_PULSE_SEC = 0.15;
     public static final double SHOOT_NUDGE_INTAKE_POWER = 1.0;
     /**
-     * Stuck ball: indexer fed forward this long (s) with no shot (timed from the start of feeding,
-     * and again from the ball passing the beam).
+     * Stuck ball: uptake fed forward this long (s) with no shot (timed from the start of feeding,
+     * and again from the ball passing the beam). Normal phases take <= ~0.37 s.
      */
-    public static final double INDEXER_STUCK_TIMEOUT_SEC = 0.75;
-    /** Stuck ball: indexer power (negative = reverse) used to back the ball up to the beam. */
-    public static final double INDEXER_UNJAM_POWER = -1.0;
+    public static final double UPTAKE_STUCK_TIMEOUT_SEC = 0.5;
+    /** Stuck ball: uptake power (negative = reverse) used to back the ball up to the beam. */
+    public static final double UPTAKE_UNJAM_POWER = -1.0;
     /** Longest reverse (s) while waiting for the stuck ball to reach the beam. */
-    public static final double INDEXER_STUCK_REVERSE_MAX_SEC = 1.0;
-    /** Stuck ball: indexer power used to push the ball through after reversing (100%). */
-    public static final double INDEXER_STUCK_PUSH_POWER = 1.0;
-    /** Longest push (s) with no shot before reversing and pushing again. */
-    public static final double INDEXER_STUCK_PUSH_MAX_SEC = 1.5;
+    public static final double UPTAKE_STUCK_REVERSE_MAX_SEC = 1.0;
+    /** Stuck ball: uptake power used to push the ball through after reversing (100%). */
+    public static final double UPTAKE_STUCK_PUSH_POWER = 1.0;
     /**
-     * Reverse-and-push attempts allowed on one ball before Main 2026 stops the indexer and shows
+     * Longest push (s) with no shot before reversing and pushing again. Pushes that work shoot
+     * within 0.4-0.6 s (2026-11-27); 1.5 wasted ~0.7 s per failed push.
+     */
+    public static final double UPTAKE_STUCK_PUSH_MAX_SEC = 0.8;
+    /**
+     * Reverse-and-push attempts allowed on one ball before Main 2026 stops the uptake and shows
      * "STUCK" (instead of looping). Cleared by a shot or releasing shoot (gamepad2 A).
      */
-    public static final int INDEXER_MAX_UNJAMS_PER_BALL = 3;
+    public static final int UPTAKE_MAX_UNJAMS_PER_BALL = 3;
 
-    // ---- Indexer beam sensor (indexBeam1) ----
+    // ---- Uptake beam sensor (indexBeam1) ----
     /**
      * indexBeam1 reading (DigitalChannel.getState()) that means a ball is blocking the beam:
      * false (LOW). Verified on the robot (2026-11-22).
@@ -219,7 +242,7 @@ public final class Constants {
     // ---- Turret tracking (TurretTracker). Angles are robot-relative, CCW-positive (deg). ----
     /**
      * Whether Main 2026 starts with turret tracking on. Gamepad2 X toggles tracking during the
-     * match, and a ball newly reaching the indexer beam turns it on. While off, the turret holds
+     * match, and a ball newly reaching the uptake beam turns it on. While off, the turret holds
      * TURRET_HOLD_POSITION (no Limelight tracking, no manual stick).
      */
     public static final boolean TURRET_TRACKING_ON_AT_START = false;
