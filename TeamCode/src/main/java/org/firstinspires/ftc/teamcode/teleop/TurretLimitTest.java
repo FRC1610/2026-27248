@@ -60,8 +60,8 @@ public class TurretLimitTest extends LinearOpMode {
 
             waitForStart();
             if (isStopRequested()) return;
+            turret.setPosition(position); // position before enable (hub NACKs otherwise)
             turret.setPwmEnable();
-            turret.setPosition(position);
 
             boolean tracking = false;
             TurretTracker tracker = null;

@@ -140,8 +140,8 @@ public class ServoPositionTest extends LinearOpMode {
     private void set(int index, double position) {
         double p = Math.max(0.0, Math.min(1.0, position));
         ServoImplEx servo = servoFor(index);
+        servo.setPosition(p); // position before enable (hub NACKs otherwise after power-up)
         servo.setPwmEnable();
-        servo.setPosition(p);
         positions[index] = p;
     }
 
