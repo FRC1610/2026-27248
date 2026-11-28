@@ -32,7 +32,7 @@ public class SingleGamepadTest extends LinearOpMode {
             telemetry.addLine("Left stick: move; right stick X: turn; left stick click: half speed.");
             telemetry.addLine("Field-centric 'forward' = the direction the robot faces at INIT.");
             telemetry.addLine("GP1: A flywheel on/off, dpad up/down RPM +/-100.");
-            telemetry.addLine("GP1: B indexer on/off, dpad right/left indexer +/-5%.");
+            telemetry.addLine("GP1: B uptake on/off, dpad right/left uptake +/-5%.");
             telemetry.addLine("GP1: RT intake, LT reverse intake; Y wedge up/down.");
             telemetry.addData("Limelight requested pipeline", robot.getSelectedVisionPipeline());
             telemetry.update();
@@ -57,8 +57,8 @@ public class SingleGamepadTest extends LinearOpMode {
             boolean yPreviouslyPressed = false;
             boolean dpadRightPreviouslyPressed = false;
             boolean dpadLeftPreviouslyPressed = false;
-            boolean indexerOn = false;
-            double indexerSpeedPercent = Constants.INDEXER_DEFAULT_SPEED_PERCENT;
+            boolean uptakeOn = false;
+            double uptakeSpeedPercent = Constants.UPTAKE_DEFAULT_SPEED_PERCENT;
             while (opModeIsActive()) {
                 robot.selectAllianceLimelightPipeline();
                 robot.refreshLimelightResult();
@@ -88,21 +88,21 @@ public class SingleGamepadTest extends LinearOpMode {
                 if (Math.abs(intakePower) < Constants.TRIGGER_DEADBAND) intakePower = 0;
                 robot.setIntakePower(intakePower);
 
-                // Indexer (gamepad1): B toggles, d-pad right/left adjusts speed by 5%.
-                if (gamepad1.b && !bPreviouslyPressed) indexerOn = !indexerOn;
+                // Uptake (gamepad1): B toggles, d-pad right/left adjusts speed by 5%.
+                if (gamepad1.b && !bPreviouslyPressed) uptakeOn = !uptakeOn;
                 bPreviouslyPressed = gamepad1.b;
                 if (gamepad1.dpad_right && !dpadRightPreviouslyPressed) {
-                    indexerSpeedPercent = Math.min(100,
-                            indexerSpeedPercent + Constants.INDEXER_SPEED_STEP_PERCENT);
+                    uptakeSpeedPercent = Math.min(100,
+                            uptakeSpeedPercent + Constants.UPTAKE_SPEED_STEP_PERCENT);
                 }
                 dpadRightPreviouslyPressed = gamepad1.dpad_right;
                 if (gamepad1.dpad_left && !dpadLeftPreviouslyPressed) {
-                    indexerSpeedPercent = Math.max(0,
-                            indexerSpeedPercent - Constants.INDEXER_SPEED_STEP_PERCENT);
+                    uptakeSpeedPercent = Math.max(0,
+                            uptakeSpeedPercent - Constants.UPTAKE_SPEED_STEP_PERCENT);
                 }
                 dpadLeftPreviouslyPressed = gamepad1.dpad_left;
-                double indexerTargetRpm = Constants.INDEXER_MAX_RPM * indexerSpeedPercent / 100.0;
-                robot.setIndexerRpm(indexerOn ? indexerTargetRpm : 0);
+                double uptakeTargetRpm = Constants.UPTAKE_MAX_RPM * uptakeSpeedPercent / 100.0;
+                robot.setUptakeRpm(uptakeOn ? uptakeTargetRpm : 0);
 
                 // Flower wedge (gamepad1): Y toggles between the up and down presets.
                 if (gamepad1.y && !yPreviouslyPressed) {
@@ -132,7 +132,7 @@ public class SingleGamepadTest extends LinearOpMode {
                 double flywheelRpm = robot.getFlywheelRpm();
                 // Lights: alliance color, or pulsing orange/green with a ball loaded.
                 // No shoot command here, so never the police (shooting) lights.
-                robot.lights.update(robot.isRedAlliance(), false, robot.isBallAtIndexer(),
+                robot.lights.update(robot.isRedAlliance(), false, robot.isBallAtUptake(),
                         flywheelOn, flywheelSetpointRpm, flywheelRpm);
                 telemetry.addData("Lights", robot.lights.isPresent()
                         ? String.valueOf(robot.lights.getState()) : "no prism configured");
@@ -147,12 +147,12 @@ public class SingleGamepadTest extends LinearOpMode {
                 telemetry.addData("Intake power", "%.2f", intakePower);
                 telemetry.addData("Intake L/R velocity (ticks/s)", "%.0f / %.0f",
                         robot.getIntakeLeftVelocity(), robot.getIntakeRightVelocity());
-                telemetry.addData("Indexer", "%s, %.0f%% (target %.0f RPM)",
-                        indexerOn ? "ON" : "OFF", indexerSpeedPercent, indexerTargetRpm);
-                telemetry.addData("Indexer current (RPM)", "%.0f", robot.getIndexerRpm());
-                if (!robot.isIndexerForwardAllowed()) {
-                    telemetry.addData("Indexer forward", "BLOCKED: flywheel off or < %.0f RPM",
-                            Constants.INDEXER_MIN_FLYWHEEL_RPM);
+                telemetry.addData("Uptake", "%s, %.0f%% (target %.0f RPM)",
+                        uptakeOn ? "ON" : "OFF", uptakeSpeedPercent, uptakeTargetRpm);
+                telemetry.addData("Uptake current (RPM)", "%.0f", robot.getUptakeRpm());
+                if (!robot.isUptakeForwardAllowed()) {
+                    telemetry.addData("Uptake forward", "BLOCKED: flywheel off or < %.0f RPM",
+                            Constants.UPTAKE_MIN_FLYWHEEL_RPM);
                 }
                 telemetry.addData("Flower wedge", "%s (%.2f)", wedgeUp ? "UP" : "DOWN",
                         robot.getFlowerWedgePosition());

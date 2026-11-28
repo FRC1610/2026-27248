@@ -26,14 +26,14 @@ import java.util.Date;
 import java.util.Locale;
 
 /**
- * Flywheel/indexer tuning: live Panels graphs, live-editable flywheel PIDF gains (Panels
+ * Flywheel/uptake tuning: live Panels graphs, live-editable flywheel PIDF gains (Panels
  * Configurables), and a CSV log on the Control Hub for offline analysis.
  *
- * <p>Uses only the flywheel, indexer, intake motors, indexBeam1 and the hub voltage sensor
+ * <p>Uses only the flywheel, uptake, intake motors, indexBeam1 and the hub voltage sensor
  * (no drive, turret or vision).
  *
- * <p>Gamepad1: A flywheel on/off, d-pad up/down setpoint +/-FLYWHEEL_RPM_STEP, B indexer on/off
- * (forward only while the flywheel measures >= INDEXER_MIN_FLYWHEEL_RPM, as in Main 2026),
+ * <p>Gamepad1: A flywheel on/off, d-pad up/down setpoint +/-FLYWHEEL_RPM_STEP, B uptake on/off
+ * (forward only while the flywheel measures >= UPTAKE_MIN_FLYWHEEL_RPM, as in Main 2026),
  * RT/LT intake forward/reverse.
  *
  * <p>Gains: kP/kI/kD/kF start at the hub's current values and can be edited in Panels while the
@@ -48,7 +48,7 @@ import java.util.Locale;
  */
 @Configurable
 @Utility(name = "Launcher Tuning",
-        description = "Flywheel/indexer PIDF tuning with Panels graphs and CSV log")
+        description = "Flywheel/uptake PIDF tuning with Panels graphs and CSV log")
 public class LauncherTuning extends LinearOpMode {
     /** Flywheel velocity PIDF gains (hub units). Negative = not set yet (filled from the hub). */
     public static double kP = -1;
@@ -64,7 +64,7 @@ public class LauncherTuning extends LinearOpMode {
         telemetry = new JoinedTelemetry(PanelsTelemetry.INSTANCE.getFtcTelemetry(), telemetry);
 
         DcMotorEx flywheel = hardwareMap.get(DcMotorEx.class, "flywheel");
-        DcMotorEx indexer = hardwareMap.get(DcMotorEx.class, "indexer");
+        DcMotorEx uptake = hardwareMap.get(DcMotorEx.class, "uptake");
         DcMotorEx intakeLeft = hardwareMap.get(DcMotorEx.class, "intakeLeft");
         DcMotorEx intakeRight = hardwareMap.get(DcMotorEx.class, "intakeRight");
         DigitalChannel indexBeam1 = hardwareMap.get(DigitalChannel.class, "indexBeam1");
@@ -73,7 +73,7 @@ public class LauncherTuning extends LinearOpMode {
 
         // Same directions and modes as RobotHardware.
         configure(flywheel, DcMotorSimple.Direction.REVERSE, DcMotor.ZeroPowerBehavior.FLOAT);
-        configure(indexer, DcMotorSimple.Direction.FORWARD, DcMotor.ZeroPowerBehavior.BRAKE);
+        configure(uptake, DcMotorSimple.Direction.FORWARD, DcMotor.ZeroPowerBehavior.BRAKE);
         configure(intakeLeft, DcMotorSimple.Direction.REVERSE, DcMotor.ZeroPowerBehavior.BRAKE);
         configure(intakeRight, DcMotorSimple.Direction.FORWARD, DcMotor.ZeroPowerBehavior.BRAKE);
 
@@ -95,10 +95,10 @@ public class LauncherTuning extends LinearOpMode {
         }
         double[] applied = {Double.NaN, Double.NaN, Double.NaN, Double.NaN};
 
-        telemetry.addLine("Launcher Tuning: flywheel, indexer and intake only.");
+        telemetry.addLine("Launcher Tuning: flywheel, uptake and intake only.");
         telemetry.addData("Hub PIDF at INIT", "P %.3f I %.3f D %.3f F %.3f",
                 hub.p, hub.i, hub.d, hub.f);
-        telemetry.addLine("GP1: A flywheel, dpad U/D setpoint, B indexer, RT/LT intake.");
+        telemetry.addLine("GP1: A flywheel, dpad U/D setpoint, B uptake, RT/LT intake.");
         telemetry.addLine("Edit kP/kI/kD/kF in Panels > Configurables while running.");
         telemetry.update();
 
@@ -117,7 +117,7 @@ public class LauncherTuning extends LinearOpMode {
                         + ".csv");
                 log = new BufferedWriter(new FileWriter(file));
                 log.write("t_s,flywheel_on,setpoint_rpm,actual_rpm,error_rpm,flywheel_amps,"
-                        + "battery_v,indexer_on,indexer_cmd_rpm,indexer_rpm,ball,intake_power,"
+                        + "battery_v,uptake_on,uptake_cmd_rpm,uptake_rpm,ball,intake_power,"
                         + "kP,kI,kD,kF\n");
                 logPath = file.getAbsolutePath();
             } catch (IOException e) {
@@ -125,7 +125,7 @@ public class LauncherTuning extends LinearOpMode {
             }
 
             boolean flywheelOn = false;
-            boolean indexerOn = false;
+            boolean uptakeOn = false;
             double setpointRpm = Constants.FLYWHEEL_DEFAULT_RPM;
             boolean prevA = false, prevB = false, prevUp = false, prevDown = false;
             double noSpeedSec = 0;
@@ -151,7 +151,7 @@ public class LauncherTuning extends LinearOpMode {
                     fault = "";
                     noSpeedSec = 0;
                 }
-                if (gamepad1.b && !prevB) indexerOn = !indexerOn;
+                if (gamepad1.b && !prevB) uptakeOn = !uptakeOn;
                 if (gamepad1.dpad_up && !prevUp) setpointRpm += Constants.FLYWHEEL_RPM_STEP;
                 if (gamepad1.dpad_down && !prevDown) setpointRpm -= Constants.FLYWHEEL_RPM_STEP;
                 prevA = gamepad1.a;
@@ -183,16 +183,16 @@ public class LauncherTuning extends LinearOpMode {
                     flywheel.setPower(0);
                 }
 
-                // Indexer: same forward interlock as Main 2026.
-                boolean indexerAllowed = flywheelOn
-                        && actualRpm >= Constants.INDEXER_MIN_FLYWHEEL_RPM;
-                double indexerCmdRpm = indexerOn && indexerAllowed
-                        ? Constants.INDEXER_MAX_RPM * Constants.INDEXER_DEFAULT_SPEED_PERCENT / 100.0
+                // Uptake: same forward interlock as Main 2026.
+                boolean uptakeAllowed = flywheelOn
+                        && actualRpm >= Constants.UPTAKE_MIN_FLYWHEEL_RPM;
+                double uptakeCmdRpm = uptakeOn && uptakeAllowed
+                        ? Constants.UPTAKE_MAX_RPM * Constants.UPTAKE_DEFAULT_SPEED_PERCENT / 100.0
                         : 0;
-                if (indexerCmdRpm > 0) {
-                    indexer.setVelocity(indexerCmdRpm * Constants.INDEXER_TICKS_PER_REV / 60.0);
+                if (uptakeCmdRpm > 0) {
+                    uptake.setVelocity(uptakeCmdRpm * Constants.UPTAKE_TICKS_PER_REV / 60.0);
                 } else {
-                    indexer.setPower(0);
+                    uptake.setPower(0);
                 }
 
                 double intakePower = gamepad1.right_trigger - gamepad1.left_trigger;
@@ -200,7 +200,7 @@ public class LauncherTuning extends LinearOpMode {
                 intakeLeft.setPower(intakePower);
                 intakeRight.setPower(intakePower);
 
-                double indexerRpm = indexer.getVelocity() * 60.0 / Constants.INDEXER_TICKS_PER_REV;
+                double uptakeRpm = uptake.getVelocity() * 60.0 / Constants.UPTAKE_TICKS_PER_REV;
                 double amps = flywheel.getCurrent(CurrentUnit.AMPS);
                 double volts = battery.getVoltage();
                 boolean ball = indexBeam1.getState() == Constants.INDEX_BEAM_BALL_STATE;
@@ -210,8 +210,8 @@ public class LauncherTuning extends LinearOpMode {
                         log.write(String.format(Locale.US,
                                 "%.3f,%d,%.0f,%.1f,%.1f,%.2f,%.2f,%d,%.0f,%.1f,%d,%.2f,%.4f,%.4f,%.4f,%.4f\n",
                                 now, flywheelOn ? 1 : 0, commandedRpm, actualRpm,
-                                commandedRpm - actualRpm, amps, volts, indexerOn ? 1 : 0,
-                                indexerCmdRpm, indexerRpm, ball ? 1 : 0, intakePower,
+                                commandedRpm - actualRpm, amps, volts, uptakeOn ? 1 : 0,
+                                uptakeCmdRpm, uptakeRpm, ball ? 1 : 0, intakePower,
                                 applied[0], applied[1], applied[2], applied[3]));
                         if (now - lastFlushSec > 1.0) {
                             log.flush();
@@ -230,12 +230,12 @@ public class LauncherTuning extends LinearOpMode {
                 telemetry.addData("Flywheel error (RPM)", (double) Math.round(commandedRpm - actualRpm));
                 telemetry.addData("Flywheel current (A)", amps);
                 telemetry.addData("Battery (V)", volts);
-                telemetry.addData("Indexer cmd (RPM)", indexerCmdRpm);
-                telemetry.addData("Indexer actual (RPM)", (double) Math.round(indexerRpm));
+                telemetry.addData("Uptake cmd (RPM)", uptakeCmdRpm);
+                telemetry.addData("Uptake actual (RPM)", (double) Math.round(uptakeRpm));
                 telemetry.addData("Ball", ball ? 1.0 : 0.0);
-                telemetry.addData("Indexer", indexerOn
-                        ? (indexerAllowed ? "ON" : "ON (BLOCKED: flywheel < "
-                        + (int) Constants.INDEXER_MIN_FLYWHEEL_RPM + " RPM)") : "OFF");
+                telemetry.addData("Uptake", uptakeOn
+                        ? (uptakeAllowed ? "ON" : "ON (BLOCKED: flywheel < "
+                        + (int) Constants.UPTAKE_MIN_FLYWHEEL_RPM + " RPM)") : "OFF");
                 telemetry.addData("Applied PIDF", "P %.3f I %.3f D %.3f F %.3f",
                         applied[0], applied[1], applied[2], applied[3]);
                 telemetry.addData("Log", logPath);
@@ -243,7 +243,7 @@ public class LauncherTuning extends LinearOpMode {
             }
         } finally {
             flywheel.setPower(0);
-            indexer.setPower(0);
+            uptake.setPower(0);
             intakeLeft.setPower(0);
             intakeRight.setPower(0);
             if (log != null) {

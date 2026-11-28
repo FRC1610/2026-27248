@@ -41,7 +41,7 @@ public class RobotHardware {
     private DcMotorEx rightBack;
     private DcMotorEx intakeLeft;
     private DcMotorEx intakeRight;
-    private DcMotorEx indexer;
+    private DcMotorEx uptake;
     public DcMotorEx flywheel;
     private PIDFCoefficients flywheelPidf;
     /** Last flywheel setpoint passed to setFlywheelRpm (0 = off). */
@@ -57,7 +57,17 @@ public class RobotHardware {
     private final double[] lastDrivePowers = new double[4];
     private long lastDriveNanos = 0;
 
+    /** Initializes everything and zeroes the Pinpoint (position and heading). */
     public void init(HardwareMap hardwareMap) {
+        init(hardwareMap, true);
+    }
+
+    /**
+     * @param resetPinpoint true = zero the Pinpoint's position and heading and recalibrate its
+     *                      IMU (robot must be still); false = keep what it has (e.g. TeleOp
+     *                      continuing from autonomous)
+     */
+    public void init(HardwareMap hardwareMap, boolean resetPinpoint) {
         leftFront = hardwareMap.get(DcMotorEx.class, "leftFront");
         rightFront = hardwareMap.get(DcMotorEx.class, "rightFront");
         leftBack = hardwareMap.get(DcMotorEx.class, "leftBack");
@@ -70,14 +80,14 @@ public class RobotHardware {
 
         intakeLeft = hardwareMap.get(DcMotorEx.class, "intakeLeft");
         intakeRight = hardwareMap.get(DcMotorEx.class, "intakeRight");
-        indexer = hardwareMap.get(DcMotorEx.class, "indexer");
+        uptake = hardwareMap.get(DcMotorEx.class, "uptake");
         flywheel = hardwareMap.get(DcMotorEx.class, "flywheel");
 
         // Intake motors face each other, so one is reversed to spin the rollers together.
         // Directions match the TestMode OpMode verified on the robot.
         configureMotor(intakeLeft, DcMotorSimple.Direction.REVERSE);
         configureMotor(intakeRight, DcMotorSimple.Direction.FORWARD);
-        configureMotor(indexer, DcMotorSimple.Direction.FORWARD);
+        configureMotor(uptake, DcMotorSimple.Direction.FORWARD);
         // FLOAT lets the flywheel coast down instead of braking hard on the gearbox.
         configureMotor(flywheel, DcMotorSimple.Direction.REVERSE, DcMotor.ZeroPowerBehavior.FLOAT);
         // setVelocity() in RUN_USING_ENCODER runs the hub's closed-loop velocity PIDF. Use the
@@ -118,8 +128,9 @@ public class RobotHardware {
         pinpoint.setEncoderResolution(GoBildaPinpointDriver.GoBildaOdometryPods.goBILDA_4_BAR_POD);
         pinpoint.setEncoderDirections(GoBildaPinpointDriver.EncoderDirection.FORWARD,
                 GoBildaPinpointDriver.EncoderDirection.REVERSED);
-        // Keep the robot stationary during initialization while the IMU calibrates.
-        pinpoint.resetPosAndIMU();
+        // Keep the robot stationary during initialization while the IMU calibrates. Skipped when
+        // continuing from autonomous, so the Pinpoint keeps its heading.
+        if (resetPinpoint) pinpoint.resetPosAndIMU();
 
         // Control Hub IMU: heading backup if the Pinpoint fails (HeadingFusion).
         imu = Constants.HEADING_IMU_BACKUP_ENABLED ? hardwareMap.tryGet(IMU.class, "imu") : null;
@@ -213,54 +224,54 @@ public class RobotHardware {
     }
 
     /**
-     * True when the indexer may run forward: the flywheel is commanded on and measures at least
-     * INDEXER_MIN_FLYWHEEL_RPM.
+     * True when the uptake may run forward: the flywheel is commanded on and measures at least
+     * UPTAKE_MIN_FLYWHEEL_RPM.
      */
-    public boolean isIndexerForwardAllowed() {
-        return flywheelTargetRpm > 0 && getFlywheelRpm() >= Constants.INDEXER_MIN_FLYWHEEL_RPM;
+    public boolean isUptakeForwardAllowed() {
+        return flywheelTargetRpm > 0 && getFlywheelRpm() >= Constants.UPTAKE_MIN_FLYWHEEL_RPM;
     }
 
     /**
-     * Positive power runs the indexer forward; clipped to [-1, 1]. Forward power is replaced
-     * with 0 unless isIndexerForwardAllowed(); reverse is always allowed.
+     * Positive power runs the uptake forward; clipped to [-1, 1]. Forward power is replaced
+     * with 0 unless isUptakeForwardAllowed(); reverse is always allowed.
      */
-    public void setIndexerPower(double power) {
+    public void setUptakePower(double power) {
         double p = clip(power, -1, 1);
-        if (p > 0 && !isIndexerForwardAllowed()) p = 0;
-        indexer.setPower(p);
+        if (p > 0 && !isUptakeForwardAllowed()) p = 0;
+        uptake.setPower(p);
     }
 
     /**
-     * Closed-loop indexer speed in RPM (forward), clipped to [0, INDEXER_MAX_RPM]. Stops the
-     * indexer instead unless isIndexerForwardAllowed().
+     * Closed-loop uptake speed in RPM (forward), clipped to [0, UPTAKE_MAX_RPM]. Stops the
+     * uptake instead unless isUptakeForwardAllowed().
      */
-    public void setIndexerRpm(double rpm) {
-        double target = clip(rpm, 0, Constants.INDEXER_MAX_RPM);
-        if (target > 0 && !isIndexerForwardAllowed()) target = 0;
+    public void setUptakeRpm(double rpm) {
+        double target = clip(rpm, 0, Constants.UPTAKE_MAX_RPM);
+        if (target > 0 && !isUptakeForwardAllowed()) target = 0;
         if (target == 0) {
-            indexer.setPower(0);
+            uptake.setPower(0);
         } else {
-            indexer.setVelocity(target * Constants.INDEXER_TICKS_PER_REV / 60.0);
+            uptake.setVelocity(target * Constants.UPTAKE_TICKS_PER_REV / 60.0);
         }
     }
 
     /**
-     * Closed-loop indexer speed for loading a ball up to indexBeam1, clipped to
-     * [0, INDEXER_MAX_RPM]. Unlike setIndexerRpm this ignores the flywheel interlock, so a ball
+     * Closed-loop uptake speed for loading a ball up to indexBeam1, clipped to
+     * [0, UPTAKE_MAX_RPM]. Unlike setUptakeRpm this ignores the flywheel interlock, so a ball
      * can be staged at the beam with the flywheel off. Only use it while the beam is clear and
-     * no ball is in the indexer (the caller stops it when the beam sees a ball).
+     * no ball is in the uptake (the caller stops it when the beam sees a ball).
      */
-    public void setIndexerLoadRpm(double rpm) {
-        double target = clip(rpm, 0, Constants.INDEXER_MAX_RPM);
+    public void setUptakeLoadRpm(double rpm) {
+        double target = clip(rpm, 0, Constants.UPTAKE_MAX_RPM);
         if (target == 0) {
-            indexer.setPower(0);
+            uptake.setPower(0);
         } else {
-            indexer.setVelocity(target * Constants.INDEXER_TICKS_PER_REV / 60.0);
+            uptake.setVelocity(target * Constants.UPTAKE_TICKS_PER_REV / 60.0);
         }
     }
 
-    public double getIndexerRpm() {
-        return indexer.getVelocity() * 60.0 / Constants.INDEXER_TICKS_PER_REV;
+    public double getUptakeRpm() {
+        return uptake.getVelocity() * 60.0 / Constants.UPTAKE_TICKS_PER_REV;
     }
 
     /** Closed-loop flywheel speed in motor/flywheel RPM, clipped to [0, FLYWHEEL_MAX_RPM]. */
@@ -277,10 +288,27 @@ public class RobotHardware {
     /** Moves both flower wedge servos to the same position (right is reversed); clipped to [0, 1]. */
     public void setFlowerWedgePosition(double position) {
         double p = clip(position, 0, 1);
-        flowerWedgeLeft.setPwmEnable();
-        flowerWedgeRight.setPwmEnable();
+        // Position first, then enable: after a hub power-up the hub rejects an enable for a servo
+        // that has never been given a pulse width (NACK SERVO_NOT_CONFIG_BEFORE_ENABLED), so the
+        // servo didn't move on the first INIT. The enable re-enables PWM after stopMechanisms().
         flowerWedgeLeft.setPosition(p);
         flowerWedgeRight.setPosition(p);
+        flowerWedgeLeft.setPwmEnable();
+        flowerWedgeRight.setPwmEnable();
+    }
+
+    /** Moves the flower wedge to its UP or DOWN preset. */
+    public void setFlowerWedgeUp(boolean up) {
+        setFlowerWedgePosition(up ? Constants.FLOWER_WEDGE_UP : Constants.FLOWER_WEDGE_DOWN);
+    }
+
+    /**
+     * True if the last flower wedge command was nearer the UP preset than DOWN (the servos have
+     * no position feedback).
+     */
+    public boolean isFlowerWedgeUp() {
+        double p = getFlowerWedgePosition();
+        return Math.abs(p - Constants.FLOWER_WEDGE_UP) <= Math.abs(p - Constants.FLOWER_WEDGE_DOWN);
     }
 
     /** Last commanded flower wedge position (servos have no position feedback). */
@@ -301,9 +329,10 @@ public class RobotHardware {
 
     /** Turret servo position, clipped to [TURRET_MIN_POSITION, TURRET_MAX_POSITION]. */
     public void setTurretPosition(double position) {
-        turret.setPwmEnable();
+        // Position first, then enable (see setFlowerWedgePosition).
         turret.setPosition(clip(position,
                 Constants.TURRET_MIN_POSITION, Constants.TURRET_MAX_POSITION));
+        turret.setPwmEnable();
     }
 
     /** Last commanded turret position (servo has no position feedback). */
@@ -320,13 +349,19 @@ public class RobotHardware {
         return intakeRight.getVelocity();
     }
 
-    public double getIndexerVelocity() {
-        return indexer.getVelocity();
+    public double getUptakeVelocity() {
+        return uptake.getVelocity();
     }
 
     /** Velocity PIDF gains active on the flywheel's hub port (read at init). */
     public PIDFCoefficients getFlywheelPidf() {
         return flywheelPidf;
+    }
+
+    /** Applies new flywheel velocity PIDF gains (hub units) and re-reads the active gains. */
+    public void setFlywheelPidf(double p, double i, double d, double f) {
+        flywheel.setVelocityPIDFCoefficients(p, i, d, f);
+        flywheelPidf = flywheel.getPIDFCoefficients(DcMotor.RunMode.RUN_USING_ENCODER);
     }
 
     public double getFlywheelRpm() {
@@ -353,7 +388,7 @@ public class RobotHardware {
     }
 
     /** True when indexBeam1 reads INDEX_BEAM_BALL_STATE, i.e. a ball is blocking the beam. */
-    public boolean isBallAtIndexer() {
+    public boolean isBallAtUptake() {
         return indexBeam1.getState() == Constants.INDEX_BEAM_BALL_STATE;
     }
 
@@ -498,13 +533,13 @@ public class RobotHardware {
     }
 
     /**
-     * Stops intake, indexer and flywheel and relaxes the servos (as the servo test OpModes do);
+     * Stops intake, uptake and flywheel and relaxes the servos (as the servo test OpModes do);
      * safe to call if initialization stopped partway.
      */
     public void stopMechanisms() {
         if (intakeLeft != null) intakeLeft.setPower(0);
         if (intakeRight != null) intakeRight.setPower(0);
-        if (indexer != null) indexer.setPower(0);
+        if (uptake != null) uptake.setPower(0);
         if (flywheel != null) flywheel.setPower(0);
         if (flowerWedgeLeft != null) flowerWedgeLeft.setPwmDisable();
         if (flowerWedgeRight != null) flowerWedgeRight.setPwmDisable();

@@ -130,14 +130,14 @@ public class FlowerWedgeTest extends LinearOpMode {
                                 boolean useRight, boolean up) {
         double p = up ? UP : DOWN;
         if (useLeft) {
+            left.setPosition(clip(p)); // position before enable (hub NACKs otherwise)
             left.setPwmEnable();
-            left.setPosition(clip(p));
         } else {
             left.setPwmDisable();
         }
         if (useRight) {
-            right.setPwmEnable();
             right.setPosition(clip(p + RIGHT_TRIM));
+            right.setPwmEnable();
         } else {
             right.setPwmDisable();
         }

@@ -13,10 +13,13 @@ import org.firstinspires.ftc.robotcore.external.navigation.AngleUnit;
 import org.firstinspires.ftc.robotcore.external.navigation.DistanceUnit;
 import org.firstinspires.ftc.robotcore.external.navigation.Pose2D;
 import org.firstinspires.ftc.robotcore.internal.system.AppUtil;
+import org.firstinspires.ftc.teamcode.AutoHandoff;
 import org.firstinspires.ftc.teamcode.Constants;
 import org.firstinspires.ftc.teamcode.HeadingFusion;
 import org.firstinspires.ftc.teamcode.RobotHardware;
-import org.firstinspires.ftc.teamcode.ShootSequence;
+import org.firstinspires.ftc.teamcode.ShootLog;
+import org.firstinspires.ftc.teamcode.LaunchSequence;
+import org.firstinspires.ftc.teamcode.ShootTuning;
 import org.firstinspires.ftc.teamcode.TurretTracker;
 
 import java.io.BufferedWriter;
@@ -28,8 +31,10 @@ import java.util.Date;
 import java.util.Locale;
 
 @TeleOp(name = "Main 2026", group = "TeleOp")
-public class DriveTeleOp extends LinearOpMode {
+public class MainTeleOp extends LinearOpMode {
     private final RobotHardware robot = new RobotHardware();
+    /** State left by autonomous, or null if TeleOp starts fresh. */
+    private AutoHandoff.State handoff = null;
 
     @Override
     public void runOpMode() {
@@ -37,17 +42,31 @@ public class DriveTeleOp extends LinearOpMode {
         // full detail and graphs (panels).
         TelemetryManager panels = PanelsTelemetry.INSTANCE.getTelemetry();
         BufferedWriter log = null;
+        ShootLog shootLog = null;
         try {
-            robot.init(hardwareMap);
+            // Continuing from autonomous (AutoHandoff): keep the Pinpoint's heading instead of
+            // zeroing it, and start the turret and flower wedge where autonomous left them.
+            handoff = AutoHandoff.take();
+            robot.init(hardwareMap, handoff == null);
+            boolean handoffHeading = handoff != null
+                    && Double.isFinite(handoff.pinpointHeadingRad);
+            if (handoffHeading) {
+                // Re-apply the heading in case the Pinpoint lost it (e.g. was power cycled).
+                robot.updatePinpoint();
+                robot.setPinpointHeading(handoff.pinpointHeadingRad);
+            }
             VoltageSensor battery = hardwareMap.voltageSensor.iterator().next();
-            // Flower wedge starts UP, as in the test OpModes (moves when INIT is pressed).
-            boolean wedgeUp = true;
-            robot.setFlowerWedgePosition(Constants.FLOWER_WEDGE_UP);
-            // Turret starts at the hold position (facing forward; moves when INIT is pressed).
-            // While tracking is on (gamepad2 X), TurretTracker aims it; otherwise it holds the
-            // hold position. Commands are clipped to TURRET_MIN/MAX_POSITION.
-            robot.setTurretPosition(Constants.TURRET_HOLD_POSITION);
-            TurretTracker turretTracker = new TurretTracker(Constants.TURRET_HOLD_POSITION);
+            // Flower wedge starts UP, or at the UP/DOWN preset autonomous left it in; moves when
+            // INIT is pressed.
+            boolean wedgeUp = handoff == null || handoff.flowerWedgeUp;
+            robot.setFlowerWedgeUp(wedgeUp);
+            // Turret starts at the hold position (or where autonomous left it). While tracking is
+            // on (gamepad2 X), TurretTracker aims it; otherwise it holds TURRET_HOLD_POSITION
+            // after START. Commands are clipped to TURRET_MIN/MAX_POSITION.
+            double turretStart = handoff != null && Double.isFinite(handoff.turretPosition)
+                    ? handoff.turretPosition : Constants.TURRET_HOLD_POSITION;
+            robot.setTurretPosition(turretStart);
+            TurretTracker turretTracker = new TurretTracker(turretStart);
 
             // INIT loop instead of waitForStart() so the lights, Limelight pipeline and the
             // telemetry follow allianceToggle and startPositionToggle until START.
@@ -65,34 +84,42 @@ public class DriveTeleOp extends LinearOpMode {
             double speed = Constants.DRIVE_FULL_SPEED;
             boolean xPreviouslyPressed = false;
             boolean bPreviouslyPressed = false;
+            boolean aPreviouslyPressed = false;
             boolean turretTrackingOn = Constants.TURRET_TRACKING_ON_AT_START;
             boolean dpadUpPreviouslyPressed = false;
             boolean dpadDownPreviouslyPressed = false;
             boolean flywheelOn = false;
-            double flywheelSetpointRpm = Constants.FLYWHEEL_DEFAULT_RPM;
+            // Flywheel RPM, flywheel PIDF, uptake speeds and all shoot-sequence timings live in
+            // ShootTuning (editable in Panels > Configurables; d-pad changes them too).
             // Set when the flywheel is turned off; the shoot command (A) is ignored until A is
             // released.
             boolean shootCancelled = false;
             boolean yPreviouslyPressed = false;
             boolean dpadRightPreviouslyPressed = false;
             boolean dpadLeftPreviouslyPressed = false;
-            double indexerSpeedPercent = Constants.INDEXER_DEFAULT_SPEED_PERCENT;
-            ShootSequence shootSequence = new ShootSequence(
-                    Constants.INDEXER_STUCK_RECOVERY_ENABLED, robot.isBallAtIndexer());
+            LaunchSequence launchSequence = new LaunchSequence(robot.isBallAtUptake());
+            // Flywheel PIDF currently on the motor (RobotHardware.init applied Constants), so a
+            // Panels edit (or Panels values kept from an earlier run) is applied below.
+            double appliedP = Constants.FLYWHEEL_PIDF_P;
+            double appliedI = Constants.FLYWHEEL_PIDF_I;
+            double appliedD = Constants.FLYWHEEL_PIDF_D;
+            double appliedF = Constants.FLYWHEEL_PIDF_F;
 
-            // CSV log of the shooter/indexer every loop: /sdcard/FIRST/data/main_<time>.csv
+            // CSV logs in /sdcard/FIRST/data/: main_<time>.csv (every loop), plus
+            // shoot_events_<time>.csv and shots_<time>.csv (ShootLog: shoot-sequence steps and
+            // per-shot timing).
+            String stamp = new SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(new Date());
+            shootLog = new ShootLog(AppUtil.ROBOT_DATA_DIR, stamp);
             String logPath;
             try {
                 File dir = AppUtil.ROBOT_DATA_DIR;
                 //noinspection ResultOfMethodCallIgnored
                 dir.mkdirs();
-                File file = new File(dir, "main_"
-                        + new SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(new Date())
-                        + ".csv");
+                File file = new File(dir, "main_" + stamp + ".csv");
                 log = new BufferedWriter(new FileWriter(file));
                 log.write("t_s,loop_ms,beam_blocked,ball_pending,flywheel_on,setpoint_rpm,"
-                        + "actual_rpm,flywheel_ready,shots,shoot_held,shoot_state,indexer_status,"
-                        + "indexer_cmd,indexer_rpm,unjams,unjams_this_ball,intake_power,"
+                        + "actual_rpm,flywheel_ready,shots,shoot_held,shoot_state,uptake_status,"
+                        + "uptake_cmd,uptake_rpm,unjams,unjams_this_ball,intake_power,"
                         + "battery_v,heading_source,pinpoint_ok,pinpoint_deg,imu_deg,"
                         + "drive_heading_deg\n");
                 logPath = file.getAbsolutePath();
@@ -103,9 +130,17 @@ public class DriveTeleOp extends LinearOpMode {
             double volts = battery.getVoltage();
             double lastFlushSec = 0;
             long loops = 0;
-            // Heading: Pinpoint, with the Control Hub IMU as backup. Both were zeroed at INIT.
+            // Heading: Pinpoint, with the Control Hub IMU as backup. Both were zeroed at INIT,
+            // unless continuing from autonomous: then the heading is autonomous's final heading
+            // and the IMU (zeroed at INIT) is lined up to it.
             HeadingFusion headingFusion = new HeadingFusion();
-            headingFusion.reset(0, 0);
+            if (handoffHeading) {
+                double imuNow = robot.readImuYawRadians();
+                headingFusion.reset(handoff.pinpointHeadingRad,
+                        Double.isNaN(imuNow) ? 0 : imuNow);
+            } else {
+                headingFusion.reset(0, 0);
+            }
 
             ElapsedTime loopTimer = new ElapsedTime();
             double lastLoopSec = loopTimer.seconds();
@@ -162,31 +197,46 @@ public class DriveTeleOp extends LinearOpMode {
                 }
 
                 // Flywheel and turret tracking on/off (gamepad2): B toggles the flywheel, X toggles
-                // tracking. A ball at the indexer beam does not turn either on. Turning the
-                // flywheel off also stops the indexer: the shoot command is cancelled until A is
-                // released.
-                boolean ballPresent = robot.isBallAtIndexer();
+                // tracking. A ball at the uptake beam does not turn either on. Pressing A (shoot)
+                // turns the flywheel on if it is off; the sequence then waits for it to reach
+                // speed. Turning the flywheel off (B) also stops the uptake: the shoot command is
+                // cancelled until A is released (holding A does not turn it back on).
+                boolean ballPresent = robot.isBallAtUptake();
                 if (gamepad2.b && !bPreviouslyPressed) {
                     flywheelOn = !flywheelOn;
                     if (!flywheelOn) shootCancelled = true;
                 }
                 bPreviouslyPressed = gamepad2.b;
+                if (gamepad2.a && !aPreviouslyPressed) flywheelOn = true;
+                aPreviouslyPressed = gamepad2.a;
                 if (gamepad2.x && !xPreviouslyPressed) turretTrackingOn = !turretTrackingOn;
                 xPreviouslyPressed = gamepad2.x;
                 boolean turretAiming = turretTrackingOn;
 
-                // Flywheel setpoint (gamepad2): d-pad up/down adjusts by 100 RPM. Commanded before
-                // the indexer so the indexer interlock sees this loop's flywheel command.
+                // Flywheel setpoint (gamepad2): d-pad up/down adjusts ShootTuning.FLYWHEEL_RPM by
+                // FLYWHEEL_RPM_STEP (also editable in Panels). Commanded before the uptake so the
+                // uptake interlock sees this loop's flywheel command.
                 if (gamepad2.dpad_up && !dpadUpPreviouslyPressed) {
-                    flywheelSetpointRpm += Constants.FLYWHEEL_RPM_STEP;
+                    ShootTuning.FLYWHEEL_RPM += Constants.FLYWHEEL_RPM_STEP;
                 }
                 dpadUpPreviouslyPressed = gamepad2.dpad_up;
                 if (gamepad2.dpad_down && !dpadDownPreviouslyPressed) {
-                    flywheelSetpointRpm -= Constants.FLYWHEEL_RPM_STEP;
+                    ShootTuning.FLYWHEEL_RPM -= Constants.FLYWHEEL_RPM_STEP;
                 }
                 dpadDownPreviouslyPressed = gamepad2.dpad_down;
-                flywheelSetpointRpm = Math.max(0,
-                        Math.min(Constants.FLYWHEEL_MAX_RPM, flywheelSetpointRpm));
+                ShootTuning.FLYWHEEL_RPM = Math.max(0,
+                        Math.min(Constants.FLYWHEEL_MAX_RPM, ShootTuning.FLYWHEEL_RPM));
+                double flywheelSetpointRpm = ShootTuning.FLYWHEEL_RPM;
+                // Flywheel PIDF: apply Panels edits as soon as they change.
+                if (ShootTuning.FLYWHEEL_P != appliedP || ShootTuning.FLYWHEEL_I != appliedI
+                        || ShootTuning.FLYWHEEL_D != appliedD
+                        || ShootTuning.FLYWHEEL_F != appliedF) {
+                    appliedP = ShootTuning.FLYWHEEL_P;
+                    appliedI = ShootTuning.FLYWHEEL_I;
+                    appliedD = ShootTuning.FLYWHEEL_D;
+                    appliedF = ShootTuning.FLYWHEEL_F;
+                    robot.setFlywheelPidf(appliedP, appliedI, appliedD, appliedF);
+                }
                 robot.setFlywheelRpm(flywheelOn ? flywheelSetpointRpm : 0);
                 double flywheelRpm = robot.getFlywheelRpm();
 
@@ -214,14 +264,14 @@ public class DriveTeleOp extends LinearOpMode {
                     turretTracker = new TurretTracker(Constants.TURRET_HOLD_POSITION);
                 }
 
-                // Emergency (gamepad2): hold RB = intake + indexer full forward, LB = full
+                // Emergency (gamepad2): hold RB = intake + uptake full forward, LB = full
                 // reverse. Holding both cancels out and leaves the normal controls in charge.
                 int emergencyDirection = (gamepad2.right_bumper ? 1 : 0)
                         - (gamepad2.left_bumper ? 1 : 0);
                 boolean emergency = emergencyDirection != 0;
 
-                // Shoot command (gamepad2): hold A. Needs the flywheel on; after the flywheel is
-                // turned off, A is ignored until it is released.
+                // Shoot command (gamepad2): hold A. The press turns the flywheel on (above); after
+                // the flywheel is turned off with B, A is ignored until it is released.
                 if (!gamepad2.a) shootCancelled = false;
                 boolean shootHeld = gamepad2.a && !shootCancelled;
                 boolean shootActive = shootHeld && flywheelOn && !emergency;
@@ -230,113 +280,124 @@ public class DriveTeleOp extends LinearOpMode {
                 double driverIntakePower = gamepad2.right_trigger - gamepad2.left_trigger;
                 if (Math.abs(driverIntakePower) < Constants.TRIGGER_DEADBAND) driverIntakePower = 0;
 
-                // Indexer feed speed (gamepad2): d-pad right/left adjusts by 5%. Loading always uses
-                // the slower INDEXER_LOAD_SPEED_PERCENT.
+                // Uptake feed speed (gamepad2): d-pad right/left adjusts
+                // ShootTuning.UPTAKE_FEED_PERCENT by 5% (also editable in Panels). Loading uses
+                // the slower ShootTuning.UPTAKE_LOAD_PERCENT.
                 if (gamepad2.dpad_right && !dpadRightPreviouslyPressed) {
-                    indexerSpeedPercent = Math.min(100,
-                            indexerSpeedPercent + Constants.INDEXER_SPEED_STEP_PERCENT);
+                    ShootTuning.UPTAKE_FEED_PERCENT += Constants.UPTAKE_SPEED_STEP_PERCENT;
                 }
                 dpadRightPreviouslyPressed = gamepad2.dpad_right;
                 if (gamepad2.dpad_left && !dpadLeftPreviouslyPressed) {
-                    indexerSpeedPercent = Math.max(0,
-                            indexerSpeedPercent - Constants.INDEXER_SPEED_STEP_PERCENT);
+                    ShootTuning.UPTAKE_FEED_PERCENT -= Constants.UPTAKE_SPEED_STEP_PERCENT;
                 }
                 dpadLeftPreviouslyPressed = gamepad2.dpad_left;
-                double indexerTargetRpm = Constants.INDEXER_MAX_RPM * indexerSpeedPercent / 100.0;
-                double indexerLoadRpm = Constants.INDEXER_MAX_RPM
-                        * Constants.INDEXER_LOAD_SPEED_PERCENT / 100.0;
+                ShootTuning.UPTAKE_FEED_PERCENT =
+                        Math.max(0, Math.min(100, ShootTuning.UPTAKE_FEED_PERCENT));
+                double uptakeSpeedPercent = ShootTuning.UPTAKE_FEED_PERCENT;
+                double uptakeTargetRpm = Constants.UPTAKE_MAX_RPM * uptakeSpeedPercent / 100.0;
+                double uptakeLoadRpm = Constants.UPTAKE_MAX_RPM
+                        * Math.max(0, Math.min(100, ShootTuning.UPTAKE_LOAD_PERCENT)) / 100.0;
 
-                // Loading and shooting (ShootSequence):
-                // - RT intake runs the indexer too until a ball reaches the beam; the indexer then
+                // Loading and shooting (LaunchSequence):
+                // - RT intake runs the uptake too until a ball reaches the beam; the uptake then
                 //   waits there while the intake keeps following RT.
                 // - Holding A (flywheel on) feeds one ball at a time: wait for the flywheel to
-                //   recover, feed with the intake stopped until the shot, then intake + indexer
+                //   recover, feed with the intake stopped until the shot, then intake + uptake
                 //   until the next ball reaches the beam, and repeat.
                 // - A stuck ball (no shot) is reversed until it is back at the beam, then pushed
                 //   at 100% until it shoots.
-                ShootSequence.State shootState = shootSequence.update(ballPresent, shootActive,
+                LaunchSequence.State shootState = launchSequence.update(ballPresent, shootActive,
                         driverIntakePower > 0 && !emergency,
                         flywheelOn ? flywheelSetpointRpm : 0, flywheelRpm, dtSec);
-                // Emergency reverse pushes balls back out; forget any ball in the indexer.
-                if (emergency && emergencyDirection < 0) shootSequence.clearPendingBall();
+                // Emergency reverse pushes balls back out; forget any ball in the uptake.
+                if (emergency && emergencyDirection < 0) launchSequence.clearPendingBall();
 
-                boolean indexerForwardAllowed = robot.isIndexerForwardAllowed();
+                boolean uptakeForwardAllowed = robot.isUptakeForwardAllowed();
                 double intakePower;
-                double indexerCmd; // logged: RPM when running closed loop, power otherwise
-                String indexerStatus;
+                double uptakeCmd; // logged: RPM when running closed loop, power otherwise
+                String uptakeStatus;
                 if (emergency) {
                     intakePower = emergencyDirection;
-                    robot.setIndexerPower(emergencyDirection);
-                    indexerCmd = emergencyDirection;
-                    indexerStatus = emergencyDirection > 0 ? "EMERGENCY FWD" : "EMERGENCY REV";
+                    robot.setUptakePower(emergencyDirection);
+                    uptakeCmd = emergencyDirection;
+                    uptakeStatus = emergencyDirection > 0 ? "EMERGENCY FWD" : "EMERGENCY REV";
                 } else {
                     switch (shootState) {
                         case LOADING:
                             // Staging up to the beam only, so the flywheel interlock is bypassed.
-                            // Slow (INDEXER_LOAD_SPEED_PERCENT) so the ball stops at the beam.
-                            robot.setIndexerLoadRpm(indexerLoadRpm);
-                            indexerCmd = indexerLoadRpm;
-                            intakePower = shootActive ? Constants.SHOOT_INTAKE_POWER
+                            // Slow (ShootTuning.UPTAKE_LOAD_PERCENT) so the ball stops at the beam.
+                            robot.setUptakeLoadRpm(uptakeLoadRpm);
+                            uptakeCmd = uptakeLoadRpm;
+                            intakePower = shootActive ? ShootTuning.SHOOT_INTAKE_POWER
                                     : driverIntakePower;
-                            indexerStatus = "LOADING";
+                            uptakeStatus = "LOADING";
                             break;
                         case FEEDING:
-                            robot.setIndexerRpm(indexerTargetRpm);
-                            indexerCmd = indexerForwardAllowed ? indexerTargetRpm : 0;
+                            robot.setUptakeRpm(uptakeTargetRpm);
+                            uptakeCmd = uptakeForwardAllowed ? uptakeTargetRpm : 0;
                             // Intake off, except short pulses that push a ball still sitting in
-                            // the beam onto the indexer rollers.
-                            intakePower = shootSequence.isIntakeNudging()
-                                    ? Constants.SHOOT_NUDGE_INTAKE_POWER : 0;
-                            indexerStatus = !indexerForwardAllowed ? "FEEDING (BLOCKED)"
-                                    : shootSequence.isIntakeNudging() ? "FEEDING (NUDGE)"
+                            // the beam onto the uptake rollers.
+                            intakePower = launchSequence.isIntakeNudging()
+                                    ? ShootTuning.NUDGE_INTAKE_POWER : 0;
+                            uptakeStatus = !uptakeForwardAllowed ? "FEEDING (BLOCKED)"
+                                    : launchSequence.isIntakeNudging() ? "FEEDING (NUDGE)"
                                     : "FEEDING";
                             break;
-                        case REVERSING:
-                            robot.setIndexerPower(Constants.INDEXER_UNJAM_POWER);
-                            indexerCmd = Constants.INDEXER_UNJAM_POWER;
+                        case SETTLING:
+                            robot.setUptakePower(0);
+                            uptakeCmd = 0;
                             intakePower = 0;
-                            indexerStatus = "STUCK - REVERSING";
+                            uptakeStatus = "SETTLING AFTER SHOT";
+                            break;
+                        case REVERSING:
+                            robot.setUptakePower(ShootTuning.UNJAM_POWER);
+                            uptakeCmd = ShootTuning.UNJAM_POWER;
+                            intakePower = 0;
+                            uptakeStatus = launchSequence.isPrestaging()
+                                    ? "PRE-STAGE - REVERSING TO BEAM" : "STUCK - REVERSING";
                             break;
                         case PUSHING:
-                            robot.setIndexerPower(Constants.INDEXER_STUCK_PUSH_POWER);
-                            indexerCmd = indexerForwardAllowed
-                                    ? Constants.INDEXER_STUCK_PUSH_POWER : 0;
-                            intakePower = shootSequence.isIntakeNudging()
-                                    ? Constants.SHOOT_NUDGE_INTAKE_POWER : 0;
-                            indexerStatus = shootSequence.isIntakeNudging()
+                            robot.setUptakePower(ShootTuning.STUCK_PUSH_POWER);
+                            uptakeCmd = uptakeForwardAllowed
+                                    ? ShootTuning.STUCK_PUSH_POWER : 0;
+                            intakePower = launchSequence.isIntakeNudging()
+                                    ? ShootTuning.NUDGE_INTAKE_POWER : 0;
+                            uptakeStatus = launchSequence.isIntakeNudging()
                                     ? "STUCK - PUSHING 100% (NUDGE)" : "STUCK - PUSHING 100%";
                             break;
                         case WAITING:
-                            robot.setIndexerPower(0);
-                            indexerCmd = 0;
+                            robot.setUptakePower(0);
+                            uptakeCmd = 0;
                             intakePower = 0;
-                            indexerStatus = "WAITING FOR FLYWHEEL";
+                            uptakeStatus = "WAITING FOR FLYWHEEL";
                             break;
                         case STUCK:
-                            robot.setIndexerPower(0);
-                            indexerCmd = 0;
+                            robot.setUptakePower(0);
+                            uptakeCmd = 0;
                             intakePower = 0;
-                            indexerStatus = "STUCK - CLEAR MANUALLY";
+                            uptakeStatus = "STUCK - CLEAR MANUALLY";
                             break;
                         case HOLDING:
                         case IDLE:
                         default:
-                            robot.setIndexerPower(0);
-                            indexerCmd = 0;
+                            robot.setUptakePower(0);
+                            uptakeCmd = 0;
                             intakePower = driverIntakePower;
-                            indexerStatus = shootState == ShootSequence.State.HOLDING
+                            uptakeStatus = shootState == LaunchSequence.State.HOLDING
                                     ? "BALL READY" : "OFF";
                             break;
                     }
                 }
                 robot.setIntakePower(intakePower);
-                double indexerRpm = robot.getIndexerRpm();
+                double uptakeRpm = robot.getUptakeRpm();
+                shootLog.update(nowSec, launchSequence, shootState, shootActive, ballPresent,
+                        flywheelOn ? flywheelSetpointRpm : 0, flywheelRpm, uptakeRpm,
+                        intakePower, volts);
 
                 // Flower wedge (gamepad2): Y toggles between the up and down presets.
                 if (gamepad2.y && !yPreviouslyPressed) {
                     wedgeUp = !wedgeUp;
-                    robot.setFlowerWedgePosition(
-                            wedgeUp ? Constants.FLOWER_WEDGE_UP : Constants.FLOWER_WEDGE_DOWN);
+                    robot.setFlowerWedgeUp(wedgeUp);
                 }
                 yPreviouslyPressed = gamepad2.y;
 
@@ -347,12 +408,12 @@ public class DriveTeleOp extends LinearOpMode {
                                 "%.4f,%.2f,%d,%d,%d,%.0f,%.1f,%d,%d,%d,%s,%s,%.2f,%.1f,%d,%d,%.2f,"
                                         + "%.2f",
                                 nowSec, dtSec * 1000.0, ballPresent ? 1 : 0,
-                                shootSequence.isBallPending() ? 1 : 0, flywheelOn ? 1 : 0,
+                                launchSequence.isBallPending() ? 1 : 0, flywheelOn ? 1 : 0,
                                 flywheelOn ? flywheelSetpointRpm : 0, flywheelRpm,
-                                shootSequence.isFlywheelReady() ? 1 : 0,
-                                shootSequence.getShots(), shootHeld ? 1 : 0, shootState,
-                                indexerStatus.replace(' ', '_'), indexerCmd, indexerRpm,
-                                shootSequence.getUnjams(), shootSequence.getUnjamsThisBall(),
+                                launchSequence.isFlywheelReady() ? 1 : 0,
+                                launchSequence.getShots(), shootHeld ? 1 : 0, shootState,
+                                uptakeStatus.replace(' ', '_'), uptakeCmd, uptakeRpm,
+                                launchSequence.getUnjams(), launchSequence.getUnjamsThisBall(),
                                 intakePower, volts)
                                 + String.format(Locale.US, ",%s,%d,%.1f,%.1f,%.1f\n",
                                 headingSource, pinpointOk ? 1 : 0,
@@ -377,14 +438,20 @@ public class DriveTeleOp extends LinearOpMode {
                         robot.getSelectedVisionPipeline());
 
                 // ---- Driver Station: alerts (only when they apply), then a short status ----
-                if (shootState == ShootSequence.State.STUCK) {
+                if (shootState == LaunchSequence.State.STUCK) {
                     telemetry.addLine("!! BALL STUCK - release A or hold LB");
                 }
-                if (shootHeld && !flywheelOn) telemetry.addLine("!! Flywheel off - press B");
+                if (gamepad2.a && shootCancelled) {
+                    telemetry.addLine("!! Shoot cancelled (flywheel off) - release A");
+                }
                 if (emergency) {
                     telemetry.addLine("!! EMERGENCY " + (emergencyDirection > 0 ? "FWD" : "REV"));
                 }
-                if (log == null) telemetry.addLine("!! Log not recording");
+                if (log == null || shootLog.getError() != null) {
+                    telemetry.addLine("!! Log not recording");
+                }
+                String tuned = ShootTuning.changedFromDefaults();
+                if (!tuned.isEmpty()) telemetry.addLine("!! Panels tuning active: " + tuned);
                 telemetry.addData("Flywheel", flywheelOn ? "ON" : "OFF");
                 telemetry.addData("Setpoint (RPM)", "%.0f", flywheelSetpointRpm);
                 telemetry.addData("Actual (RPM)", "%.0f", flywheelRpm);
@@ -405,22 +472,36 @@ public class DriveTeleOp extends LinearOpMode {
                 panels.addData("Target distance (in)", targetDistanceIn);
                 panels.addData("Shoot active", shootActive ? 1.0 : 0.0);
                 panels.addData("Shoot state", String.valueOf(shootState));
-                panels.addData("Indexer status", indexerStatus);
-                panels.addData("Indexer setpoint (RPM)", (double) Math.round(
-                        shootState == ShootSequence.State.LOADING
-                                || shootState == ShootSequence.State.FEEDING
-                                ? indexerCmd : 0));
-                panels.addData("Indexer actual (RPM)", (double) Math.round(indexerRpm));
-                panels.addData("Indexer speed (%)", indexerSpeedPercent);
-                panels.addData("Indexer forward allowed", indexerForwardAllowed ? 1.0 : 0.0);
+                panels.addData("Uptake status", uptakeStatus);
+                panels.addData("Uptake setpoint (RPM)", (double) Math.round(
+                        shootState == LaunchSequence.State.LOADING
+                                || shootState == LaunchSequence.State.FEEDING
+                                ? uptakeCmd : 0));
+                panels.addData("Uptake actual (RPM)", (double) Math.round(uptakeRpm));
+                panels.addData("Uptake speed (%)", uptakeSpeedPercent);
+                panels.addData("Uptake forward allowed", uptakeForwardAllowed ? 1.0 : 0.0);
                 panels.addData("Ball at beam", ballPresent ? 1.0 : 0.0);
-                panels.addData("Ball in indexer, not shot",
-                        shootSequence.isBallPending() ? 1.0 : 0.0);
-                panels.addData("Shots", shootSequence.getShots());
-                panels.addData("Unjams", shootSequence.getUnjams());
-                panels.addData("Unjams on this ball", shootSequence.getUnjamsThisBall());
-                panels.addData("Intake nudging", shootSequence.isIntakeNudging() ? 1.0 : 0.0);
-                panels.addData("Intake nudges", shootSequence.getNudges());
+                panels.addData("Ball in uptake, not shot",
+                        launchSequence.isBallPending() ? 1.0 : 0.0);
+                panels.addData("Shots", launchSequence.getShots());
+                panels.addData("Unjams", launchSequence.getUnjams());
+                panels.addData("Unjams on this ball", launchSequence.getUnjamsThisBall());
+                panels.addData("Intake nudging", launchSequence.isIntakeNudging() ? 1.0 : 0.0);
+                panels.addData("Intake nudges", launchSequence.getNudges());
+                // Shot timing (ShootLog): graph these while tuning.
+                panels.addData("Flywheel underspeed (RPM)",
+                        flywheelOn ? flywheelSetpointRpm - flywheelRpm : 0.0);
+                panels.addData("Flywheel ready", launchSequence.isFlywheelReady() ? 1.0 : 0.0);
+                panels.addData("Burst shots", shootLog.getBurstShots());
+                panels.addData("Burst elapsed (s)", shootLog.getBurstElapsedSec(nowSec));
+                panels.addData("Last shot interval (s)", shootLog.getLastIntervalSec());
+                panels.addData("Last feed-to-shot (s)", shootLog.getLastFeedToShotSec());
+                panels.addData("Last recovery (s)", shootLog.getLastRecoverySec());
+                panels.addData("Last load next (s)", shootLog.getLastLoadSec());
+                panels.addData("Last RPM at contact", shootLog.getLastContactRpm());
+                panels.addData("Last min RPM", shootLog.getLastMinRpm());
+                panels.addData("Last burst", shootLog.getLastBurstSummary());
+                panels.addData("Panels tuning changed", tuned.isEmpty() ? "none" : tuned);
                 panels.addData("Intake power", intakePower);
                 panels.addData("Lights", String.valueOf(robot.lights.getState()));
                 panels.addData("Flower wedge", wedgeUp ? "UP" : "DOWN");
@@ -458,6 +539,7 @@ public class DriveTeleOp extends LinearOpMode {
                     try {
                         robot.stopVision();
                     } finally {
+                        if (shootLog != null) shootLog.close();
                         if (log != null) {
                             try {
                                 log.close();
@@ -475,7 +557,15 @@ public class DriveTeleOp extends LinearOpMode {
     private void addInitTelemetry() {
         telemetry.addData("Alliance", robot.isRedAlliance() ? "RED" : "BLUE");
         telemetry.addData("Start position", robot.getStartPositionName());
+        if (handoff != null) {
+            telemetry.addLine(String.format(Locale.US,
+                    "From auto (%.0f s ago): heading %.1f deg, turret %.2f, wedge %s",
+                    handoff.ageSec, Math.toDegrees(handoff.pinpointHeadingRad),
+                    handoff.turretPosition, handoff.flowerWedgeUp ? "UP" : "DOWN"));
+        }
         telemetry.addLine("Back to wall, front facing left. Keep still.");
+        String tuned = ShootTuning.changedFromDefaults();
+        if (!tuned.isEmpty()) telemetry.addLine("!! Panels tuning active: " + tuned);
     }
 
     /** Limelight details for Panels. */

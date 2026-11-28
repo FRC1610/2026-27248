@@ -29,8 +29,8 @@ import java.util.Locale;
  *
  * <p>Counting:
  * <ul>
- *   <li><b>Beam passes:</b> indexBeam1 (at the indexer entrance) going blocked -> clear, i.e. a
- *       ball has moved past the sensor into the indexer.
+ *   <li><b>Beam passes:</b> indexBeam1 (at the uptake entrance) going blocked -> clear, i.e. a
+ *       ball has moved past the sensor into the uptake.
  *   <li><b>Shots:</b> the flywheel dropping more than SHOT_DROP_RPM below its setpoint (each
  *       launched ball takes ~260-600 RPM). Detection only starts once the flywheel has first
  *       reached speed (spinning up no longer counts as a shot) and re-arms once the speed is back
@@ -39,20 +39,20 @@ import java.util.Locale;
  *
  * <p>Feeding (hold RB; the intake runs whenever RB is held):
  * <ul>
- *   <li><b>WAIT FOR RECOVERY</b> (default, the planned autonomous behavior): the indexer starts
+ *   <li><b>WAIT FOR RECOVERY</b> (default, the planned autonomous behavior): the uptake starts
  *       once the flywheel is no more than READY_TOLERANCE_RPM <i>below</i> its setpoint (running
  *       fast does not block it) and then keeps running steadily until a shot is detected; it
  *       stops until the flywheel recovers again. (The first version also stopped whenever the
- *       speed read high, which chopped the indexer on and off.)
- *   <li><b>CONTINUOUS</b>: the indexer runs whenever RB is held.
+ *       speed read high, which chopped the uptake on and off.)
+ *   <li><b>CONTINUOUS</b>: the uptake runs whenever RB is held.
  * </ul>
  *
  * <p><b>Stuck-ball recovery</b> (B toggles, default on): if a ball has passed the beam and no shot
- * follows within STUCK_TIMEOUT_SEC of the indexer running forward, the indexer reverses at
+ * follows within STUCK_TIMEOUT_SEC of the uptake running forward, the uptake reverses at
  * UNJAM_POWER for UNJAM_SEC and then feeds again (the intake keeps pushing the next ball).
  *
  * <p>Gamepad1: A flywheel on/off; hold RB feed; hold LB reverse everything; Y feed mode; B stuck
- * recovery on/off; X resets counters; d-pad right/left indexer speed +/-5%.
+ * recovery on/off; X resets counters; d-pad right/left uptake speed +/-5%.
  *
  * <p>Uses the tuned flywheel PIDF from Constants and bulk reads for a faster loop. Logs every
  * loop to /sdcard/FIRST/data/shots_yyyyMMdd_HHmmss.csv. Thresholds are editable live in Panels
@@ -60,22 +60,22 @@ import java.util.Locale;
  */
 @Configurable
 @Utility(name = "Shot Counter Test",
-        description = "Counts balls (indexer beam) and shots (flywheel dips); CSV log")
+        description = "Counts balls (uptake beam) and shots (flywheel dips); CSV log")
 public class ShotCounterTest extends LinearOpMode {
     /** A shot is detected when the flywheel falls this far below its setpoint (RPM). */
     public static double SHOT_DROP_RPM = 150;
     /** Shot detection (re-)arms once the flywheel is back within this of its setpoint (RPM). */
     public static double SHOT_REARM_RPM = 100;
-    /** WAIT FOR RECOVERY starts the indexer once the flywheel is at most this far below its
+    /** WAIT FOR RECOVERY starts the uptake once the flywheel is at most this far below its
      *  setpoint (RPM). Running above the setpoint never blocks feeding. */
     public static double READY_TOLERANCE_RPM = Constants.LIGHTS_FLYWHEEL_READY_TOLERANCE_RPM;
     /** Intake power while feeding (RB) or reversing (LB). */
     public static double FEED_INTAKE_POWER = 1.0;
-    /** Stuck ball: no shot this long (s, indexer running forward) after a ball passed the beam. */
+    /** Stuck ball: no shot this long (s, uptake running forward) after a ball passed the beam. */
     public static double STUCK_TIMEOUT_SEC = 0.4;
     /**
-     * Unjam: indexer power (negative = reverse) and duration (s). About 0.08 s of the duration is
-     * spent braking the indexer from full forward speed, so 0.35 s gives ~0.25 s of real reverse
+     * Unjam: uptake power (negative = reverse) and duration (s). About 0.08 s of the duration is
+     * spent braking the uptake from full forward speed, so 0.35 s gives ~0.25 s of real reverse
      * (0.15 s at -0.6 only reversed for ~0.07 s in testing).
      */
     public static double UNJAM_POWER = -1.0;
@@ -94,7 +94,7 @@ public class ShotCounterTest extends LinearOpMode {
         }
 
         DcMotorEx flywheel = hardwareMap.get(DcMotorEx.class, "flywheel");
-        DcMotorEx indexer = hardwareMap.get(DcMotorEx.class, "indexer");
+        DcMotorEx uptake = hardwareMap.get(DcMotorEx.class, "uptake");
         DcMotorEx intakeLeft = hardwareMap.get(DcMotorEx.class, "intakeLeft");
         DcMotorEx intakeRight = hardwareMap.get(DcMotorEx.class, "intakeRight");
         DigitalChannel beam = hardwareMap.get(DigitalChannel.class, "indexBeam1");
@@ -103,7 +103,7 @@ public class ShotCounterTest extends LinearOpMode {
 
         // Same directions and modes as RobotHardware.
         configure(flywheel, DcMotorSimple.Direction.REVERSE, DcMotor.ZeroPowerBehavior.FLOAT);
-        configure(indexer, DcMotorSimple.Direction.FORWARD, DcMotor.ZeroPowerBehavior.BRAKE);
+        configure(uptake, DcMotorSimple.Direction.FORWARD, DcMotor.ZeroPowerBehavior.BRAKE);
         configure(intakeLeft, DcMotorSimple.Direction.REVERSE, DcMotor.ZeroPowerBehavior.BRAKE);
         configure(intakeRight, DcMotorSimple.Direction.FORWARD, DcMotor.ZeroPowerBehavior.BRAKE);
         if (Constants.FLYWHEEL_USE_TUNED_PIDF) {
@@ -111,9 +111,9 @@ public class ShotCounterTest extends LinearOpMode {
                     Constants.FLYWHEEL_PIDF_I, Constants.FLYWHEEL_PIDF_D, Constants.FLYWHEEL_PIDF_F);
         }
 
-        telemetry.addLine("Shot Counter Test: flywheel, indexer and intake only.");
+        telemetry.addLine("Shot Counter Test: flywheel, uptake and intake only.");
         telemetry.addLine("GP1: A flywheel, hold RB feed, hold LB reverse, Y feed mode,");
-        telemetry.addLine("B stuck recovery, X reset, d-pad R/L indexer speed. Load 4 balls.");
+        telemetry.addLine("B stuck recovery, X reset, d-pad R/L uptake speed. Load 4 balls.");
         telemetry.update();
 
         BufferedWriter log = null;
@@ -132,7 +132,7 @@ public class ShotCounterTest extends LinearOpMode {
                 log = new BufferedWriter(new FileWriter(file));
                 log.write("t_s,loop_ms,beam_blocked,beam_passes,flywheel_on,setpoint_rpm,"
                         + "actual_rpm,shots,feed_held,wait_mode,feed_ready,ball_pending,"
-                        + "recovery_on,unjamming,unjams,indexer_cmd,indexer_rpm,intake_power,"
+                        + "recovery_on,unjamming,unjams,uptake_cmd,uptake_rpm,intake_power,"
                         + "battery_v\n");
                 logPath = file.getAbsolutePath();
             } catch (IOException e) {
@@ -143,7 +143,7 @@ public class ShotCounterTest extends LinearOpMode {
             boolean waitForRecovery = true;
             boolean stuckRecovery = true;
             double setpointRpm = Constants.FLYWHEEL_DEFAULT_RPM;
-            double indexerPercent = Constants.INDEXER_DEFAULT_SPEED_PERCENT;
+            double uptakePercent = Constants.UPTAKE_DEFAULT_SPEED_PERCENT;
             boolean prevA = false, prevY = false, prevX = false, prevB = false;
             boolean prevRight = false, prevLeft = false;
 
@@ -160,7 +160,7 @@ public class ShotCounterTest extends LinearOpMode {
             boolean feedReady = false;      // WAIT mode latch: set on recovery, cleared by a shot
             boolean ballPending = false;    // a ball passed the beam and has not been shot yet
             double pendingSinceT = 0;
-            double stuckTimer = 0;          // indexer-forward time since the pending ball passed
+            double stuckTimer = 0;          // uptake-forward time since the pending ball passed
             double unjamUntilT = -1;
             int unjams = 0;
             double lastLatencySec = Double.NaN, maxLatencySec = Double.NaN;
@@ -207,10 +207,10 @@ public class ShotCounterTest extends LinearOpMode {
                     loopMsMax = 0;
                 }
                 if (gamepad1.dpad_right && !prevRight) {
-                    indexerPercent = Math.min(100, indexerPercent + Constants.INDEXER_SPEED_STEP_PERCENT);
+                    uptakePercent = Math.min(100, uptakePercent + Constants.UPTAKE_SPEED_STEP_PERCENT);
                 }
                 if (gamepad1.dpad_left && !prevLeft) {
-                    indexerPercent = Math.max(0, indexerPercent - Constants.INDEXER_SPEED_STEP_PERCENT);
+                    uptakePercent = Math.max(0, uptakePercent - Constants.UPTAKE_SPEED_STEP_PERCENT);
                 }
                 prevA = gamepad1.a;
                 prevY = gamepad1.y;
@@ -223,7 +223,7 @@ public class ShotCounterTest extends LinearOpMode {
 
                 // ---- Sensors (bulk-cached) ----
                 double actualRpm = flywheel.getVelocity() * 60.0 / Constants.FLYWHEEL_TICKS_PER_REV;
-                double indexerRpm = indexer.getVelocity() * 60.0 / Constants.INDEXER_TICKS_PER_REV;
+                double uptakeRpm = uptake.getVelocity() * 60.0 / Constants.UPTAKE_TICKS_PER_REV;
                 boolean beamBlocked = beam.getState() == Constants.INDEX_BEAM_BALL_STATE;
                 if (loops % 25 == 0) volts = battery.getVoltage(); // not part of the bulk read
 
@@ -291,10 +291,10 @@ public class ShotCounterTest extends LinearOpMode {
                 }
 
                 // ---- Feed ----
-                boolean indexerAllowed = flywheelOn && actualRpm >= Constants.INDEXER_MIN_FLYWHEEL_RPM;
-                boolean wantForward = feedHeld && indexerAllowed && (!waitForRecovery || feedReady);
+                boolean uptakeAllowed = flywheelOn && actualRpm >= Constants.UPTAKE_MIN_FLYWHEEL_RPM;
+                boolean wantForward = feedHeld && uptakeAllowed && (!waitForRecovery || feedReady);
 
-                // Stuck ball: indexer has been feeding forward with a ball inside but no shot.
+                // Stuck ball: uptake has been feeding forward with a ball inside but no shot.
                 boolean unjamming = now < unjamUntilT;
                 if (stuckRecovery && wantForward && ballPending && !unjamming) {
                     stuckTimer += dt;
@@ -306,19 +306,19 @@ public class ShotCounterTest extends LinearOpMode {
                     }
                 }
 
-                double indexerCmd; // logged: RPM when forward, power (negative) when reversing
+                double uptakeCmd; // logged: RPM when forward, power (negative) when reversing
                 if (reverseHeld) {
-                    indexer.setPower(-1);
-                    indexerCmd = -1;
+                    uptake.setPower(-1);
+                    uptakeCmd = -1;
                 } else if (feedHeld && unjamming) {
-                    indexer.setPower(UNJAM_POWER);
-                    indexerCmd = UNJAM_POWER;
+                    uptake.setPower(UNJAM_POWER);
+                    uptakeCmd = UNJAM_POWER;
                 } else if (wantForward) {
-                    indexerCmd = Constants.INDEXER_MAX_RPM * indexerPercent / 100.0;
-                    indexer.setVelocity(indexerCmd * Constants.INDEXER_TICKS_PER_REV / 60.0);
+                    uptakeCmd = Constants.UPTAKE_MAX_RPM * uptakePercent / 100.0;
+                    uptake.setVelocity(uptakeCmd * Constants.UPTAKE_TICKS_PER_REV / 60.0);
                 } else {
-                    indexer.setPower(0);
-                    indexerCmd = 0;
+                    uptake.setPower(0);
+                    uptakeCmd = 0;
                 }
                 double intakePower = feedHeld ? FEED_INTAKE_POWER
                         : reverseHeld ? -FEED_INTAKE_POWER : 0;
@@ -334,7 +334,7 @@ public class ShotCounterTest extends LinearOpMode {
                                 commandedRpm, actualRpm, shots, feedHeld ? 1 : 0,
                                 waitForRecovery ? 1 : 0, feedReady ? 1 : 0, ballPending ? 1 : 0,
                                 stuckRecovery ? 1 : 0, (feedHeld && unjamming) ? 1 : 0, unjams,
-                                indexerCmd, indexerRpm, intakePower, volts));
+                                uptakeCmd, uptakeRpm, intakePower, volts));
                         if (now - lastFlushT > 1.0) {
                             log.flush();
                             lastFlushT = now;
@@ -350,7 +350,7 @@ public class ShotCounterTest extends LinearOpMode {
                 telemetry.addData("Beam passes (balls)", beamPasses);
                 telemetry.addData("Shots (flywheel dips)", shots);
                 telemetry.addData("Unjams", unjams);
-                telemetry.addData("Ball in indexer, not shot", ballPending ? 1.0 : 0.0);
+                telemetry.addData("Ball in uptake, not shot", ballPending ? 1.0 : 0.0);
                 telemetry.addData("Beam -> shot (ms) last / max", "%d / %d",
                         Math.round(lastLatencySec * 1000), Math.round(maxLatencySec * 1000));
                 telemetry.addData("Beam blocked", beamBlocked ? 1.0 : 0.0);
@@ -365,19 +365,19 @@ public class ShotCounterTest extends LinearOpMode {
                 telemetry.addData("Stuck recovery (B)", stuckRecovery ? "ON" : "OFF");
                 telemetry.addData("Feeding", feedHeld
                         ? (unjamming ? "UNJAMMING"
-                        : wantForward ? "INDEXER RUNNING"
-                        : !indexerAllowed ? "WAITING (flywheel < "
-                        + (int) Constants.INDEXER_MIN_FLYWHEEL_RPM + ")" : "WAITING FOR RECOVERY")
+                        : wantForward ? "UPTAKE RUNNING"
+                        : !uptakeAllowed ? "WAITING (flywheel < "
+                        + (int) Constants.UPTAKE_MIN_FLYWHEEL_RPM + ")" : "WAITING FOR RECOVERY")
                         : reverseHeld ? "REVERSE" : "off");
-                telemetry.addData("Indexer speed (%)", indexerPercent);
-                telemetry.addData("Indexer actual (RPM)", (double) Math.round(indexerRpm));
+                telemetry.addData("Uptake speed (%)", uptakePercent);
+                telemetry.addData("Uptake actual (RPM)", (double) Math.round(uptakeRpm));
                 telemetry.addData("Battery (V)", volts);
                 telemetry.addData("Log", logPath);
                 telemetry.update();
             }
         } finally {
             flywheel.setPower(0);
-            indexer.setPower(0);
+            uptake.setPower(0);
             intakeLeft.setPower(0);
             intakeRight.setPower(0);
             if (log != null) {
