@@ -57,7 +57,17 @@ public class RobotHardware {
     private final double[] lastDrivePowers = new double[4];
     private long lastDriveNanos = 0;
 
+    /** Initializes everything and zeroes the Pinpoint (position and heading). */
     public void init(HardwareMap hardwareMap) {
+        init(hardwareMap, true);
+    }
+
+    /**
+     * @param resetPinpoint true = zero the Pinpoint's position and heading and recalibrate its
+     *                      IMU (robot must be still); false = keep what it has (e.g. TeleOp
+     *                      continuing from autonomous)
+     */
+    public void init(HardwareMap hardwareMap, boolean resetPinpoint) {
         leftFront = hardwareMap.get(DcMotorEx.class, "leftFront");
         rightFront = hardwareMap.get(DcMotorEx.class, "rightFront");
         leftBack = hardwareMap.get(DcMotorEx.class, "leftBack");
@@ -118,8 +128,9 @@ public class RobotHardware {
         pinpoint.setEncoderResolution(GoBildaPinpointDriver.GoBildaOdometryPods.goBILDA_4_BAR_POD);
         pinpoint.setEncoderDirections(GoBildaPinpointDriver.EncoderDirection.FORWARD,
                 GoBildaPinpointDriver.EncoderDirection.REVERSED);
-        // Keep the robot stationary during initialization while the IMU calibrates.
-        pinpoint.resetPosAndIMU();
+        // Keep the robot stationary during initialization while the IMU calibrates. Skipped when
+        // continuing from autonomous, so the Pinpoint keeps its heading.
+        if (resetPinpoint) pinpoint.resetPosAndIMU();
 
         // Control Hub IMU: heading backup if the Pinpoint fails (HeadingFusion).
         imu = Constants.HEADING_IMU_BACKUP_ENABLED ? hardwareMap.tryGet(IMU.class, "imu") : null;
@@ -284,6 +295,20 @@ public class RobotHardware {
         flowerWedgeRight.setPosition(p);
         flowerWedgeLeft.setPwmEnable();
         flowerWedgeRight.setPwmEnable();
+    }
+
+    /** Moves the flower wedge to its UP or DOWN preset. */
+    public void setFlowerWedgeUp(boolean up) {
+        setFlowerWedgePosition(up ? Constants.FLOWER_WEDGE_UP : Constants.FLOWER_WEDGE_DOWN);
+    }
+
+    /**
+     * True if the last flower wedge command was nearer the UP preset than DOWN (the servos have
+     * no position feedback).
+     */
+    public boolean isFlowerWedgeUp() {
+        double p = getFlowerWedgePosition();
+        return Math.abs(p - Constants.FLOWER_WEDGE_UP) <= Math.abs(p - Constants.FLOWER_WEDGE_DOWN);
     }
 
     /** Last commanded flower wedge position (servos have no position feedback). */

@@ -200,6 +200,14 @@ public final class Constants {
     /** ...for this many loops in a row before it is used again. */
     public static final int PINPOINT_RETRUST_LOOPS = 25;
 
+    // ---- Autonomous -> TeleOp handoff (AutoHandoff) ----
+    /**
+     * Main 2026 uses the Pinpoint heading, turret and flower wedge positions left by autonomous
+     * only if autonomous ended at most this long ago (s). Normal match transition: ~8 s plus
+     * the time to press INIT.
+     */
+    public static final double AUTO_HANDOFF_MAX_AGE_SEC = 120.0;
+
     // ---- Start position toggle (startPositionToggle digital input) ----
     /** startPositionToggle reading (getState()) that means the Audience start: true (HIGH). */
     public static final boolean START_POSITION_AUDIENCE_STATE = true;

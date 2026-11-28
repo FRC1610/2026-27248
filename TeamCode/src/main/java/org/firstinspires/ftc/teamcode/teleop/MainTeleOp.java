@@ -13,6 +13,7 @@ import org.firstinspires.ftc.robotcore.external.navigation.AngleUnit;
 import org.firstinspires.ftc.robotcore.external.navigation.DistanceUnit;
 import org.firstinspires.ftc.robotcore.external.navigation.Pose2D;
 import org.firstinspires.ftc.robotcore.internal.system.AppUtil;
+import org.firstinspires.ftc.teamcode.AutoHandoff;
 import org.firstinspires.ftc.teamcode.Constants;
 import org.firstinspires.ftc.teamcode.HeadingFusion;
 import org.firstinspires.ftc.teamcode.RobotHardware;
@@ -32,6 +33,8 @@ import java.util.Locale;
 @TeleOp(name = "Main 2026", group = "TeleOp")
 public class MainTeleOp extends LinearOpMode {
     private final RobotHardware robot = new RobotHardware();
+    /** State left by autonomous, or null if TeleOp starts fresh. */
+    private AutoHandoff.State handoff = null;
 
     @Override
     public void runOpMode() {
@@ -41,16 +44,29 @@ public class MainTeleOp extends LinearOpMode {
         BufferedWriter log = null;
         ShootLog shootLog = null;
         try {
-            robot.init(hardwareMap);
+            // Continuing from autonomous (AutoHandoff): keep the Pinpoint's heading instead of
+            // zeroing it, and start the turret and flower wedge where autonomous left them.
+            handoff = AutoHandoff.take();
+            robot.init(hardwareMap, handoff == null);
+            boolean handoffHeading = handoff != null
+                    && Double.isFinite(handoff.pinpointHeadingRad);
+            if (handoffHeading) {
+                // Re-apply the heading in case the Pinpoint lost it (e.g. was power cycled).
+                robot.updatePinpoint();
+                robot.setPinpointHeading(handoff.pinpointHeadingRad);
+            }
             VoltageSensor battery = hardwareMap.voltageSensor.iterator().next();
-            // Flower wedge starts UP, as in the test OpModes (moves when INIT is pressed).
-            boolean wedgeUp = true;
-            robot.setFlowerWedgePosition(Constants.FLOWER_WEDGE_UP);
-            // Turret starts at the hold position (facing forward; moves when INIT is pressed).
-            // While tracking is on (gamepad2 X), TurretTracker aims it; otherwise it holds the
-            // hold position. Commands are clipped to TURRET_MIN/MAX_POSITION.
-            robot.setTurretPosition(Constants.TURRET_HOLD_POSITION);
-            TurretTracker turretTracker = new TurretTracker(Constants.TURRET_HOLD_POSITION);
+            // Flower wedge starts UP, or at the UP/DOWN preset autonomous left it in; moves when
+            // INIT is pressed.
+            boolean wedgeUp = handoff == null || handoff.flowerWedgeUp;
+            robot.setFlowerWedgeUp(wedgeUp);
+            // Turret starts at the hold position (or where autonomous left it). While tracking is
+            // on (gamepad2 X), TurretTracker aims it; otherwise it holds TURRET_HOLD_POSITION
+            // after START. Commands are clipped to TURRET_MIN/MAX_POSITION.
+            double turretStart = handoff != null && Double.isFinite(handoff.turretPosition)
+                    ? handoff.turretPosition : Constants.TURRET_HOLD_POSITION;
+            robot.setTurretPosition(turretStart);
+            TurretTracker turretTracker = new TurretTracker(turretStart);
 
             // INIT loop instead of waitForStart() so the lights, Limelight pipeline and the
             // telemetry follow allianceToggle and startPositionToggle until START.
@@ -114,9 +130,17 @@ public class MainTeleOp extends LinearOpMode {
             double volts = battery.getVoltage();
             double lastFlushSec = 0;
             long loops = 0;
-            // Heading: Pinpoint, with the Control Hub IMU as backup. Both were zeroed at INIT.
+            // Heading: Pinpoint, with the Control Hub IMU as backup. Both were zeroed at INIT,
+            // unless continuing from autonomous: then the heading is autonomous's final heading
+            // and the IMU (zeroed at INIT) is lined up to it.
             HeadingFusion headingFusion = new HeadingFusion();
-            headingFusion.reset(0, 0);
+            if (handoffHeading) {
+                double imuNow = robot.readImuYawRadians();
+                headingFusion.reset(handoff.pinpointHeadingRad,
+                        Double.isNaN(imuNow) ? 0 : imuNow);
+            } else {
+                headingFusion.reset(0, 0);
+            }
 
             ElapsedTime loopTimer = new ElapsedTime();
             double lastLoopSec = loopTimer.seconds();
@@ -373,8 +397,7 @@ public class MainTeleOp extends LinearOpMode {
                 // Flower wedge (gamepad2): Y toggles between the up and down presets.
                 if (gamepad2.y && !yPreviouslyPressed) {
                     wedgeUp = !wedgeUp;
-                    robot.setFlowerWedgePosition(
-                            wedgeUp ? Constants.FLOWER_WEDGE_UP : Constants.FLOWER_WEDGE_DOWN);
+                    robot.setFlowerWedgeUp(wedgeUp);
                 }
                 yPreviouslyPressed = gamepad2.y;
 
@@ -534,6 +557,12 @@ public class MainTeleOp extends LinearOpMode {
     private void addInitTelemetry() {
         telemetry.addData("Alliance", robot.isRedAlliance() ? "RED" : "BLUE");
         telemetry.addData("Start position", robot.getStartPositionName());
+        if (handoff != null) {
+            telemetry.addLine(String.format(Locale.US,
+                    "From auto (%.0f s ago): heading %.1f deg, turret %.2f, wedge %s",
+                    handoff.ageSec, Math.toDegrees(handoff.pinpointHeadingRad),
+                    handoff.turretPosition, handoff.flowerWedgeUp ? "UP" : "DOWN"));
+        }
         telemetry.addLine("Back to wall, front facing left. Keep still.");
         String tuned = ShootTuning.changedFromDefaults();
         if (!tuned.isEmpty()) telemetry.addLine("!! Panels tuning active: " + tuned);
